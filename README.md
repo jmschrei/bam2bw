@@ -2,6 +2,30 @@
 
 A command-line tool for converting SAM/BAM files into stranded bp resolution BigWig files. Specifically, only the 5' end of reads are mapped (not the full span of the read), separate BigWig files are produces for positive and negative strand reads, and these BigWig files contain the integer count of reads mapping to each basepair. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely. This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the BigWig files used to train ML programs without several time-consuming steps.
 
+```
+usage: bam2bw [-h] -s SIZES -n NAME [-ps POS_SHIFT] [-ns NEG_SHIFT] [-v] filename [filename ...]
+
+This tool will convert BAM files to bigwig files without an intermediate.
+
+positional arguments:
+  filename              The SAM/BAM file to be processed.
+
+options:
+  -h, --help            show this help message and exit
+  -s SIZES, --sizes SIZES
+                        A chromosome sizes file.
+  -n NAME, --name NAME
+  -ps POS_SHIFT, --pos_shift POS_SHIFT
+                        A shift to apply to positive strand reads.
+  -ns NEG_SHIFT, --neg_shift NEG_SHIFT
+                        A shift to apply to negative strand reads.
+  -v, --verbose
+```
+
+#### Installation
+
+`pip install bam2bw`
+
 #### Timings
 
 These timings involve the processing of https://www.encodeproject.org/files/ENCFF638WXQ/ which has slightly over 70M reads. Local means applied to a file that was already downloaded, and remote means including the downloading time.
