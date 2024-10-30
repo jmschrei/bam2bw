@@ -6,9 +6,11 @@ A command-line tool for converting SAM/BAM files into stranded bp resolution Big
 
 These timings involve the processing of https://www.encodeproject.org/files/ENCFF638WXQ/ which has slightly over 70M reads. Local means applied to a file that was already downloaded, and remote means including the downloading time.
 
-`bam2bw (local): 2m10s`
-`bam2bw (remote): 4m50s`
-`existing pipeline (local): 18m5s`
+```
+bam2bw (local): 2m10s
+bam2bw (remote): 4m50s
+existing pipeline (local): 18m5s
+```
 
 #### Usage
 
