@@ -1,9 +1,9 @@
 ## bam2bw
 
-A command-line tool for converting SAM/BAM files into stranded bp resolution BigWig files. Specifically, only the 5' end of reads are mapped (not the full span of the read), separate BigWig files are produces for positive and negative strand reads, and these BigWig files contain the integer count of reads mapping to each basepair. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely. This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the BigWig files used to train ML programs without several time-consuming steps.
+A command-line tool for converting SAM/BAM files into either stranded or unstranded basepair resolution bigWig files. Specifically, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely. This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the BigWig files used to train ML programs without several time-consuming steps.
 
 ```
-usage: bam2bw [-h] -s SIZES -n NAME [-ps POS_SHIFT] [-ns NEG_SHIFT] [-v] filename [filename ...]
+usage: bam2bw [-h] -s SIZES [-u] -n NAME [-ps POS_SHIFT] [-ns NEG_SHIFT] [-z ZOOMS] [-v] filename [filename ...]
 
 This tool will convert BAM files to bigwig files without an intermediate.
 
@@ -14,11 +14,14 @@ options:
   -h, --help            show this help message and exit
   -s SIZES, --sizes SIZES
                         A chromosome sizes file.
+  -u, --unstranded      Have only one, unstranded, output.
   -n NAME, --name NAME
   -ps POS_SHIFT, --pos_shift POS_SHIFT
                         A shift to apply to positive strand reads.
   -ns NEG_SHIFT, --neg_shift NEG_SHIFT
                         A shift to apply to negative strand reads.
+  -z ZOOMS, --zooms ZOOMS
+                        The number of zooms to store in the bigwig.
   -v, --verbose
 ```
 
