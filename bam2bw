@@ -24,20 +24,21 @@ parser.add_argument('filename', nargs='+',
 	help="""The SAM/BAM file to be processed.""")         
 parser.add_argument('-s', '--sizes', required=True, 
 	help="""A chromosome sizes file.""")
+parser.add_argument('-u', '--unstranded', action='store_true',
+    help="Have only one, unstranded, output.")
 parser.add_argument('-n', '--name', required=True)
 parser.add_argument('-ps', '--pos_shift', default=0,
 	help="""A shift to apply to positive strand reads.""")
 parser.add_argument('-ns', '--neg_shift', default=0,
 	help="""A shift to apply to negative strand reads.""") 
+parser.add_argument('-z', '--zooms', default=0, type=int,
+    help="""The number of zooms to store in the bigwig.""")
 parser.add_argument('-v', '--verbose', action='store_true')
 args = parser.parse_args()
 
 
 ###
 
-
-bw_pos = pyBigWig.open(args.name + ".+.bw", "w")
-bw_neg = pyBigWig.open(args.name + ".-.bw", "w")
 
 pos_reads = {}
 neg_reads = {}
@@ -51,8 +52,16 @@ with open(args.sizes, "r") as size_file:
 		pos_reads[chrom] = collections.defaultdict(int)
 		neg_reads[chrom] = collections.defaultdict(int)
 
-bw_pos.addHeader(chrom_sizes, maxZooms=0)
-bw_neg.addHeader(chrom_sizes, maxZooms=0)
+if args.unstranded:
+    bw_pos = pyBigWig.open(args.name + ".bw", "w")
+    bw_pos.addHeader(chrom_sizes, maxZooms=args.zooms)
+
+else:
+    bw_pos = pyBigWig.open(args.name + ".+.bw", "w")
+    bw_neg = pyBigWig.open(args.name + ".-.bw", "w")
+
+    bw_pos.addHeader(chrom_sizes, maxZooms=args.zooms)
+    bw_neg.addHeader(chrom_sizes, maxZooms=args.zooms)
 
 
 ###
@@ -68,7 +77,7 @@ for filename in args.filename:
 		start = read.reference_start + args.pos_shift
 		end = read.reference_end + args.neg_shift
 		
-		if read.is_forward:
+		if read.is_forward or args.unstranded:
 			pos_reads[chrom][start] += 1
 		else:
 			neg_reads[chrom][end-1] += 1
@@ -91,7 +100,7 @@ for chrom, _ in chrom_sizes:
 	###
 	
 	reads = neg_reads[chrom]
-	if len(reads) > 0:
+	if len(reads) > 0 and not args.unstranded:
 		neg_starts = numpy.array(list(reads.keys()), dtype='int64')
 		neg_values = numpy.array(list(reads.values()), dtype='float64')
 		
@@ -99,4 +108,6 @@ for chrom, _ in chrom_sizes:
 		bw_neg.addEntries(chrom, neg_starts[idxs], values=neg_values[idxs], span=1)
 	
 bw_pos.close()
-bw_neg.close()
+
+if not args.unstranded:
+	bw_neg.close()
