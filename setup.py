@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='bam2bw',
-    version='0.2.0',
+    version='0.2.2',
     author='Jacob Schreiber',
     author_email='jmschreiber91@gmail.com',
     scripts=['bam2bw'],

@@ -27,9 +27,9 @@ parser.add_argument('-s', '--sizes', required=True,
 parser.add_argument('-u', '--unstranded', action='store_true',
     help="Have only one, unstranded, output.")
 parser.add_argument('-n', '--name', required=True)
-parser.add_argument('-ps', '--pos_shift', default=0,
+parser.add_argument('-ps', '--pos_shift', default=0, type=int,
 	help="""A shift to apply to positive strand reads.""")
-parser.add_argument('-ns', '--neg_shift', default=0,
+parser.add_argument('-ns', '--neg_shift', default=0, type=int,
 	help="""A shift to apply to negative strand reads.""") 
 parser.add_argument('-z', '--zooms', default=0, type=int,
     help="""The number of zooms to store in the bigwig.""")
@@ -41,7 +41,7 @@ args = parser.parse_args()
 
 
 pos_reads = {}
-neg_reads = {}
+neg_reads = pos_reads if args.unstranded else {}
 
 chrom_sizes = []
 with open(args.sizes, "r") as size_file:
@@ -50,7 +50,9 @@ with open(args.sizes, "r") as size_file:
 		chrom_sizes.append((chrom, int(size)))
 		
 		pos_reads[chrom] = collections.defaultdict(int)
-		neg_reads[chrom] = collections.defaultdict(int)
+		
+		if not args.unstranded:
+			neg_reads[chrom] = collections.defaultdict(int)
 
 if args.unstranded:
     bw_pos = pyBigWig.open(args.name + ".bw", "w")
@@ -77,7 +79,7 @@ for filename in args.filename:
 		start = read.reference_start + args.pos_shift
 		end = read.reference_end + args.neg_shift
 		
-		if read.is_forward or args.unstranded:
+		if read.is_forward:
 			pos_reads[chrom][start] += 1
 		else:
 			neg_reads[chrom][end-1] += 1
