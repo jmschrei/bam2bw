@@ -1,20 +1,21 @@
 ## bam2bw
 
-A command-line tool for converting SAM/BAM files into either stranded or unstranded basepair resolution bigWig files. Specifically, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely. This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the BigWig files used to train ML programs without several time-consuming steps.
+A command-line tool for converting SAM/BAM files of reads of fragment tsv/tsv.gz files into either stranded or unstranded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps.
 
 ```
-usage: bam2bw [-h] -s SIZES [-u] -n NAME [-ps POS_SHIFT] [-ns NEG_SHIFT] [-z ZOOMS] [-v] filename [filename ...]
+usage: bam2bw [-h] -s SIZES [-u] [-f] -n NAME [-ps POS_SHIFT] [-ns NEG_SHIFT] [-z ZOOMS] [-v] filename [filename ...]
 
 This tool will convert BAM files to bigwig files without an intermediate.
 
 positional arguments:
-  filename              The SAM/BAM file to be processed.
+  filename              The SAM/BAM or tsv/tsv.gz file to be processed.
 
 options:
   -h, --help            show this help message and exit
   -s SIZES, --sizes SIZES
-                        A chromosome sizes file.
+                        A chrom_sizes or FASTA file.
   -u, --unstranded      Have only one, unstranded, output.
+  -f, --fragments       The data is fragments and so both ends should be recorded.
   -n NAME, --name NAME
   -ps POS_SHIFT, --pos_shift POS_SHIFT
                         A shift to apply to positive strand reads.
