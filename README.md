@@ -75,7 +75,7 @@ bedGraphToBigWig my.+.bedGraph hg38.chrom.sizes my.+.bw
 bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ```
 
-# Version Log
+### Version Log
 
 ```
 v0.3.0
