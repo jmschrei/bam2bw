@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='bam2bw',
-    version='0.2.2',
+    version='0.3.0',
     author='Jacob Schreiber',
     author_email='jmschreiber91@gmail.com',
     scripts=['bam2bw'],
@@ -12,6 +12,7 @@ setup(
     install_requires=[
         "numpy",
         "pysam",
+		"pyfaidx",
         "pyBigWig",
         "tqdm"
     ],
