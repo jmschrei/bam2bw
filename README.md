@@ -26,11 +26,11 @@ options:
   -v, --verbose
 ```
 
-#### Installation
+### Installation
 
 `pip install bam2bw`
 
-#### Timings
+### Timings
 
 These timings involve the processing of https://www.encodeproject.org/files/ENCFF638WXQ/ which has slightly over 70M reads. Local means applied to a file that was already downloaded, and remote means including the downloading time.
 
@@ -40,7 +40,7 @@ bam2bw (remote): 4m50s
 existing pipeline (local): 18m5s
 ```
 
-#### Usage
+### Usage
 
 On a local file:
 
@@ -58,7 +58,7 @@ On several remote files:
 
 `bam2bw https://path/to/my1.bam https://path/to/my2.bam https://path/to/my3.bam -s hg38.chrom.sizes -n test-run -v`
 
-Each will return two BigWig files: `test-run.+.bw` and `test-run.-.bw`. When multiple files are passed in their reads are concatenated without the need to produce an intermediary file of concatenated reads.
+Each will return two BbgWig files: `test-run.+.bw` and `test-run.-.bw`. When multiple files are passed in their reads are concatenated without the need to produce an intermediary file of concatenated reads.
 
 #### Existing Pipeline
 
@@ -75,3 +75,15 @@ bedGraphToBigWig my.+.bedGraph hg38.chrom.sizes my.+.bw
 bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ```
 
+# Version Log
+
+```
+v0.3.0
+======
+
+  - A FASTA can be passed in to -s instead of a chrom_sizes file, and the chromosomes and their sizes automatically extracted
+  - Entries not mapping to a chromosome in the chrom_sizes/FASTA file will be ignored and a warning will be raised if -v is set
+  - .tsv and .tsv.gz files can processed now using the same arguments.
+  - The -f argument has been added which treats entires as fragments where both the 3' and 5' ends should be added instead of just the 5' one
+
+```
