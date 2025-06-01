@@ -129,6 +129,8 @@ for filename in args.filename:
 					if args.verbose:
 						print("{} encountered in input but not in FASTA/chrom sizes.".format(
 							chrom))
+					
+				continue
 			
 			start = read.reference_start + args.pos_shift
 			end = read.reference_end + args.neg_shift
@@ -180,7 +182,9 @@ for filename in args.filename:
 					if args.verbose:
 						print("{} encountered in input but not in FASTA/chrom sizes.".format(
 							chrom))
-								
+				
+				continue
+				
 			start = int(float(start)) + args.pos_shift
 			end = int(float(end)) + args.neg_shift
 			
