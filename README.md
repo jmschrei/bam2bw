@@ -1,6 +1,6 @@
 ## bam2bw
 
-A command-line tool for converting SAM/BAM files of reads of fragment tsv/tsv.gz files into either stranded or unstranded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps.
+A command-line tool for converting SAM/BAM files of reads or fragment tsv/tsv.gz files into either stranded or unstranded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps.
 
 ```
 usage: bam2bw [-h] -s SIZES [-u] [-f] -n NAME [-ps POS_SHIFT] [-ns NEG_SHIFT] [-z ZOOMS] [-v] filename [filename ...]
@@ -58,7 +58,7 @@ On several remote files:
 
 `bam2bw https://path/to/my1.bam https://path/to/my2.bam https://path/to/my3.bam -s hg38.chrom.sizes -n test-run -v`
 
-Each will return two BbgWig files: `test-run.+.bw` and `test-run.-.bw`. When multiple files are passed in their reads are concatenated without the need to produce an intermediary file of concatenated reads.
+Each will return two bigWig files: `test-run.+.bw` and `test-run.-.bw`. When multiple files are passed in their reads are concatenated without the need to produce an intermediary file of concatenated reads.
 
 #### Existing Pipeline
 
