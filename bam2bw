@@ -26,15 +26,27 @@ parser.add_argument('filename', nargs='+',
 	help="""The SAM/BAM or tsv/tsv.gz file to be processed.""")         
 parser.add_argument('-s', '--sizes', required=True, 
 	help="""A chrom_sizes or FASTA file.""")
+
+# Data properties
+
 parser.add_argument('-u', '--unstranded', action='store_true',
     help="Have only one, unstranded, output.")
 parser.add_argument('-f', '--fragments', action='store_true', default=False,
 	help="The data is fragments and so both ends should be recorded.")
-parser.add_argument('-n', '--name', required=True)
+
 parser.add_argument('-ps', '--pos_shift', default=0, type=int,
 	help="""A shift to apply to positive strand reads.""")
 parser.add_argument('-ns', '--neg_shift', default=0, type=int,
 	help="""A shift to apply to negative strand reads.""") 
+
+parser.add_argument('-sf', '--scale_factor', default=1, type=float,
+	help="""A scaling factor to multiply each position by.""")
+parser.add_argument('-r', '--read_depth', default=False, action='store_true',
+	help="""Whether to divide through by total (pre-scaled) read depth.""")
+
+# Misc arguments
+
+parser.add_argument('-n', '--name', required=True)
 parser.add_argument('-z', '--zooms', default=0, type=int,
     help="""The number of zooms to store in the bigwig.""")
 parser.add_argument('-v', '--verbose', action='store_true')
@@ -210,12 +222,22 @@ for filename in args.filename:
 # position, rather than as spans of size 1 which would be three numbers per
 # non-zero position. This reduces file size and also I/O time.
 
+if args.read_depth:
+	read_depth = sum([sum(pos_reads[chrom].values()) for chrom, _ in chrom_sizes])
+	if not args.unstranded:
+		read_depth += sum([sum(neg_reads[chrom].values()) for chrom, _ in chrom_sizes])
+
+
 for chrom, _ in chrom_sizes:
 	reads = pos_reads[chrom]
 	if len(reads) > 0:
 		pos_starts = numpy.array(list(reads.keys()), dtype='int64')
 		pos_values = numpy.array(list(reads.values()), dtype='float64')
-		
+		pos_values *= args.scale_factor
+
+		if args.read_depth:
+			pos_values /= read_depth
+
 		idxs = numpy.argsort(pos_starts)
 		bw_pos.addEntries(chrom, pos_starts[idxs], values=pos_values[idxs], span=1)
 
@@ -225,10 +247,14 @@ for chrom, _ in chrom_sizes:
 	if len(reads) > 0 and not args.unstranded:
 		neg_starts = numpy.array(list(reads.keys()), dtype='int64')
 		neg_values = numpy.array(list(reads.values()), dtype='float64')
-		
+		neg_values *= args.scale_factor
+
+		if args.read_depth:
+			neg_values /= read_depth
+
 		idxs = numpy.argsort(neg_starts)
 		bw_neg.addEntries(chrom, neg_starts[idxs], values=neg_values[idxs], span=1)
-	
+
 bw_pos.close()
 if not args.unstranded:
 	bw_neg.close()
