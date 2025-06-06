@@ -104,6 +104,19 @@ bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ### Version Log
 
 ```
+v0.3.2
+======
+
+  - Added -sf which is a scale factor that multiplies each position.
+  - Added -r which performs read-depth normalization, dividing each position by the (pre-scaled) sum.
+  - You can use -sf and -r together to make the bigWigs sum to your desired value.
+
+
+v0.3.1
+======
+
+  - Fixed a minor bug
+
 v0.3.0
 ======
 
