@@ -47,41 +47,41 @@ existing pipeline (local): 18m5s
 
 ### Usage
 
-On a local file:
+(1) On a local file:
 
 `bam2bw my.bam -s hg38.chrom.sizes -n test-run -v`
 
-On several local files:
+(2) On several local files:
 
 `bam2bw my1.bam my2.bam my3.bam -s hg38.chrom.sizes -n test-run -v`
 
-On a remote file:
+(3) On a remote file:
 
 `bam2bw https://path/to/my.bam -s hg38.chrom.sizes -n test-run -v`
 
-On several remote files:
+(4) On several remote files:
 
 `bam2bw https://path/to/my1.bam https://path/to/my2.bam https://path/to/my3.bam -s hg38.chrom.sizes -n test-run -v`
 
 Each will return two bigWig files: `test-run.+.bw` and `test-run.-.bw`. When multiple files are passed in their reads are concatenated without the need to produce an intermediary file of concatenated reads.
 
-When wanting a single unstranded bigWig:
+(5) When wanting a single unstranded bigWig:
 
 `bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -u`
 
-When wanting to map fragments (and get a single unstranded bigWig):
+(6) When wanting to map fragments (and get a single unstranded bigWig):
 
 `bam2bw fragments.tsv.gz -s hg38.chrom.sizes -n test-run -v -f -u`
 
-With a FASTA instead of a .chrom.sizes:
+(7) With a FASTA instead of a .chrom.sizes:
 
 `bam2bw my.bam -s hg38.fa -n test-run -v`
 
-When wanting to normalize by read depth such that the sum across both bigWigs is equal to 1.
+(8) When wanting to normalize by read depth such that the sum across both bigWigs is equal to 1.
 
 `bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -r`
 
-When wanting to normalize by read depth such that the sum across both bigWigs is equal to 1,000,000.
+(9) When wanting to normalize by read depth such that the sum across both bigWigs is equal to 1,000,000.
 
 `bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -r -sf 1000000`
 
