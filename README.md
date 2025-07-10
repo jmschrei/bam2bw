@@ -1,5 +1,7 @@
 ## bam2bw
 
+[![Downloads](https://static.pepy.tech/badge/bam2bw)](https://pepy.tech/project/bam2bw)
+
 A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files of fragments, into either stranded or unstraded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. As a convenience, the starts and ends can be shifted (e.g., to account for Tn5 bias), a scaling factor can be used to multiply the mapped counts at each basepair, and read depth normalization can be applied to make the sum across the bigWigs be equal to 1. When a scaling factor and read depth normalization are used together, the sum across the two bigWigs is equal to the scaling factor.
 
 `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps.
