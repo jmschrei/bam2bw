@@ -4,7 +4,7 @@
 
 A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files of fragments, into either stranded or unstraded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. As a convenience, the starts and ends can be shifted (e.g., to account for Tn5 bias), a scaling factor can be used to multiply the mapped counts at each basepair, and read depth normalization can be applied to make the sum across the bigWigs be equal to 1. When a scaling factor and read depth normalization are used together, the sum across the two bigWigs is equal to the scaling factor.
 
-`bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps.
+`bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps. v0.4.0 allows parallel processing of files, even if they are remote, reducing the time needed to process inputs to just the time needed to process the biggest one.
 
 ```
 usage: bam2bw [-h] -s SIZES [-u] [-f] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
@@ -48,6 +48,8 @@ bam2bw (local): 2m10s
 bam2bw (remote): 4m50s
 existing pipeline (local): 18m5s
 ```
+
+On my compute server, I can usually get over 1.5M records/second when reading BAM files locally and have been able to stream three BAMs from the ENCODE Portal at ~800k records/second, processing the almost 945M records in just over 8 minutes (ENCFF337YBN.bam, ENCFF981FXV.bam, ENCFF144GBU.bam). Admittedly, the first setting will be influenced by the quality of your hard drive, and the second setting by the quality of your internet connection (and whether the speed is throttled).
 
 ### Usage
 
@@ -108,6 +110,11 @@ bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ### Version Log
 
 ```
+v0.4.1
+======
+
+  - Oops removed print statement.
+
 v0.4.0
 ======
 
