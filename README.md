@@ -106,6 +106,15 @@ bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ### Version Log
 
 ```
+v0.4.0
+======
+
+  - Added in a -p/--parallel option to read from input files in parallel using joblib. Max 1 process per input file
+  - Moved the opening of bigWig objects until AFTER the input files are completely read to avoid deleting everything immediately if you accidentally re-run the command
+  - Allow reading from .bed and .bed.gz files.
+  - Create one progress bar per input file that can update in parallel with the description being the file name.
+
+
 v0.3.2
 ======
 
