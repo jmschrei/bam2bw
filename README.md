@@ -7,7 +7,7 @@ A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files 
 `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps.
 
 ```
-usage: bam2bw [-h] -s SIZES [-u] [-f] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-sf SCALE_FACTOR] [-r] -n NAME [-z ZOOMS] [-v] filename [filename ...]
+usage: bam2bw [-h] -s SIZES [-u] [-f] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
 
 This tool will convert BAM files to bigwig files without an intermediate.
 
@@ -27,6 +27,8 @@ options:
   -sf SCALE_FACTOR, --scale_factor SCALE_FACTOR
                         A scaling factor to multiply each position by.
   -r, --read_depth      Whether to divide through by total (pre-scaled) read depth.
+  -p PARALLEL, --parallel PARALLEL
+                        The number of jobs to use, max of one per input file.
   -n NAME, --name NAME
   -z ZOOMS, --zooms ZOOMS
                         The number of zooms to store in the bigwig.
@@ -106,6 +108,15 @@ bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ### Version Log
 
 ```
+v0.4.0
+======
+
+  - Added in a -p/--parallel option to read from input files in parallel using joblib. Max 1 process per input file
+  - Moved the opening of bigWig objects until AFTER the input files are completely read to avoid deleting everything immediately if you accidentally re-run the command
+  - Allow reading from .bed and .bed.gz files.
+  - Create one progress bar per input file that can update in parallel with the description being the file name.
+
+
 v0.3.2
 ======
 
