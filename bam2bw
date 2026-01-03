@@ -17,6 +17,12 @@ import pyBigWig
 import pyfaidx
 
 from tqdm import tqdm
+from joblib import Parallel
+from joblib import delayed
+
+### Load the user-specified arguments
+
+# Base arguments
 
 parser = argparse.ArgumentParser(
     prog='bam2bw',
@@ -46,6 +52,8 @@ parser.add_argument('-r', '--read_depth', default=False, action='store_true',
 
 # Misc arguments
 
+parser.add_argument('-p', '--parallel', default=1, type=int,
+	help="The number of jobs to use, max of one per input file.")
 parser.add_argument('-n', '--name', required=True)
 parser.add_argument('-z', '--zooms', default=0, type=int,
     help="""The number of zooms to store in the bigwig.""")
@@ -55,10 +63,13 @@ args = parser.parse_args()
 
 ###
 
+# First check that the files are the right format
 
-pos_reads = {}
-neg_reads = pos_reads if args.unstranded else {}
+acceptable_formats = '.bam', '.sam', '.tsv', '.tsv.gz', '.bed', '.bed.gz'
 
+for filename in args.filename:
+	if not filename.endswith(acceptable_formats):
+		raise ValueError("Filenames must end in one of {}.".format(', '.join(acceptable_formats)))
 
 # Here, we are determining the chromosomes and their sizes. This is necessary
 # for creating the bigWig header(s) and for figuring out which reads to filter
@@ -68,7 +79,6 @@ neg_reads = pos_reads if args.unstranded else {}
 # FASTA file, we need code to handle the two situations. We use pyfaidx to
 # quickly process the FASTA file so that we do not have to scan through the
 # entire thing just to get the sizes.
-
 
 chrom_sizes = []
 
@@ -85,50 +95,35 @@ else:
 			chrom, size = line.strip("\r\n").split()
 			chrom_sizes.append((chrom, int(size)))
 
-# Create dictionaries for each chrom, regardless
-for chrom, _ in chrom_sizes:
-	pos_reads[chrom] = collections.defaultdict(int)
-	if not args.unstranded:
-		neg_reads[chrom] = collections.defaultdict(int)
-
-
 ###
-
-
-# Here, we open the bigWigs that we will be saving data into. If the data is
-# stranded, we are saving two bigWigs. If the data is not stranded, we are only
-# saving one bigWig.
-
-if args.unstranded:
-    bw_pos = pyBigWig.open(args.name + ".bw", "w")
-    bw_pos.addHeader(chrom_sizes, maxZooms=args.zooms)
-
-else:
-    bw_pos = pyBigWig.open(args.name + ".+.bw", "w")
-    bw_neg = pyBigWig.open(args.name + ".-.bw", "w")
-
-    bw_pos.addHeader(chrom_sizes, maxZooms=args.zooms)
-    bw_neg.addHeader(chrom_sizes, maxZooms=args.zooms)
-
-
-###
-
-
-missing_chroms = set()
 
 # This is the main loop that goes through the reads and records them in
 # one or two dictionaries (depending on if the data is stranded). The
-# processing of BAM/SAM files relies on pysam whereas tsv/tsv.gz files use
+# processing of BAM/SAM files relies on pysam, whereas tsv/tsv.gz files use
 # basic file iteration. The processing of reads in both cases is largely the
 # same except that, usually, the -f flag will be passed in for .tsv/.tsv.gz
 # files because those come from fragments from ATAC-seq-like experiments,
 # whereas BAM/SAM files are usually just reads.
 
-for filename in args.filename:
-	
+# First, a function that reads a single file and returns one or two
+# dictionaries of reads. This can be parallelized across files. 
+
+def extract_reads(args, chrom_sizes, idx):
+	missing_chroms = set()
+	pos_reads = {}
+	neg_reads = pos_reads if args.unstranded else {}
+
+	# Create dictionaries for each chrom, regardless
+	for chrom, _ in chrom_sizes:
+		pos_reads[chrom] = collections.defaultdict(int)
+		neg_reads[chrom] = collections.defaultdict(int) # Redundant if unstranded
+
+	# Extract the file being considered	
+	filename = args.filename[idx]
+	name = filename.split("/")[-1]
 	if filename.endswith(".bam"):
 		bam = pysam.AlignmentFile(filename, "rb")
-		for read in tqdm(bam.fetch(until_eof=True), disable=not args.verbose):
+		for read in tqdm(bam.fetch(until_eof=True), disable=not args.verbose, position=idx, desc=name):
 			if read.is_unmapped:
 				continue
 
@@ -170,20 +165,20 @@ for filename in args.filename:
 		
 		bam.close()
 	
-	elif filename.endswith(".tsv") or filename.endswith(".tsv.gz"):
+	elif filename[-4:] in ('.tsv', '.bed') or filename[-7:] in ('.tsv.gz', '.bed.gz'):
 		# Open the file using the correct opener -- the standard one if the file is
 		# not compressed, otherwise the gzip opener if gzipped.
 		
-		if filename.endswith(".tsv"):
+		if filename[-4:] in ('.tsv', '.bed'):
 			f = open(filename, "r")
-		elif filename.endswith(".tsv.gz"):
+		elif filename[-7:] in ('.tsv.gz', '.bed.gz'):
 			f = gzip.open(filename, "rt")
 		
 		# Here, we process the entries in a similar manner to using pysam except that
 		# we assume the coordinates are all fwd strand. We do not explicitly assume
 		# that we want both the start and the end of the entry, which is controlled
 		# using the -f flag, but we do not handle strandedness here.
-		
+
 		for line in tqdm(f, disable=not args.verbose):
 			# Check whether the chrom is in the allowable chroms. Otherwise, discard.
 			
@@ -203,10 +198,34 @@ for filename in args.filename:
 			pos_reads[chrom][start] += 1
 			if args.fragments:
 				pos_reads[chrom][end-1] += 1
-	
-	else:
-		raise ValueError("Input filename must end in .bam, .sam, .tsv, or .tsv.gz")
 
+	return pos_reads, neg_reads
+
+f = delayed(extract_reads)
+print(args.parallel)
+reads = Parallel(n_jobs=args.parallel, backend='multiprocessing')(
+	f(args, chrom_sizes, i) for i in range(len(args.filename))
+)
+
+### Collect the reads into a single object.
+
+pos_reads, neg_reads = reads[0]
+if len(reads) > 1:
+	for pos_reads_, neg_reads_ in reads[1:]:
+		for chrom, reads_ in pos_reads_.items():
+			for idx, count in reads_.items():
+				if idx in pos_reads[chrom]:
+					pos_reads[chrom][idx] += count
+				else:
+					pos_reads[chrom][idx] = count
+
+		if not args.unstranded:
+			for chrom, reads_ in neg_reads_.items():
+				for idx, count in reads_.items():
+					if idx in neg_reads[chrom]:
+						neg_reads[chrom][idx] += count
+					else:
+						neg_reads[chrom][idx] = count
 
 ###
 
@@ -216,7 +235,23 @@ for filename in args.filename:
 # and then sort them, but this usually is not that big of a hassle. It is much
 # faster to sort the arrays at the end like this that it is to try to keep
 # everything in order as you see the reads.
-#
+
+# Here, we open the bigWigs that we will be saving data into. If the data is
+# stranded, we are saving two bigWigs. If the data is not stranded, we are only
+# saving one bigWig.
+
+if args.unstranded:
+    bw_pos = pyBigWig.open(args.name + ".bw", "w")
+    bw_pos.addHeader(chrom_sizes, maxZooms=args.zooms)
+
+else:
+    bw_pos = pyBigWig.open(args.name + ".+.bw", "w")
+    bw_neg = pyBigWig.open(args.name + ".-.bw", "w")
+
+    bw_pos.addHeader(chrom_sizes, maxZooms=args.zooms)
+    bw_neg.addHeader(chrom_sizes, maxZooms=args.zooms)
+
+
 # We use pyBigWig for our tool to create bigWig files. We choose to save
 # entries using only the coordinate and the value, so two numbers per non-zero
 # position, rather than as spans of size 1 which would be three numbers per
