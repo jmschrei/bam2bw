@@ -202,7 +202,6 @@ def extract_reads(args, chrom_sizes, idx):
 	return pos_reads, neg_reads
 
 f = delayed(extract_reads)
-print(args.parallel)
 reads = Parallel(n_jobs=args.parallel, backend='multiprocessing')(
 	f(args, chrom_sizes, i) for i in range(len(args.filename))
 )
