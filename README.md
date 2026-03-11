@@ -7,7 +7,7 @@ A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files 
 `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps. v0.4.0 allows parallel processing of files, even if they are remote, reducing the time needed to process inputs to just the time needed to process the biggest one.
 
 ```
-usage: bam2bw [-h] -s SIZES [-u] [-f] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
+usage: bam2bw [-h] -s SIZES [-u] [-f | -3] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
 
 This tool will convert BAM files to bigwig files without an intermediate.
 
@@ -20,6 +20,7 @@ options:
                         A chrom_sizes or FASTA file.
   -u, --unstranded      Have only one, unstranded, output.
   -f, --fragments       The data is fragments and so both ends should be recorded.
+  -3, --three_prime     Record the 3' end of each read instead of the 5' end.
   -ps POS_SHIFT, --pos_shift POS_SHIFT
                         A shift to apply to positive strand reads.
   -ns NEG_SHIFT, --neg_shift NEG_SHIFT
@@ -90,6 +91,10 @@ Each will return two bigWig files: `test-run.+.bw` and `test-run.-.bw`. When mul
 (9) When wanting to normalize by read depth such that the sum across both bigWigs is equal to 1,000,000.
 
 `bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -r -sf 1000000`
+
+(10) When wanting to record 3' ends instead of 5' ends:
+
+`bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -3`
 
 
 #### Existing Pipeline
