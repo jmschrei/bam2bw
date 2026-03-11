@@ -37,8 +37,12 @@ parser.add_argument('-s', '--sizes', required=True,
 
 parser.add_argument('-u', '--unstranded', action='store_true',
     help="Have only one, unstranded, output.")
-parser.add_argument('-f', '--fragments', action='store_true', default=False,
+
+end_group = parser.add_mutually_exclusive_group()
+end_group.add_argument('-f', '--fragments', action='store_true', default=False,
 	help="The data is fragments and so both ends should be recorded.")
+end_group.add_argument('-3', '--three_prime', action='store_true', default=False,
+	help="Record the 3' end of each read instead of the 5' end.")
 
 parser.add_argument('-ps', '--pos_shift', default=0, type=int,
 	help="""A shift to apply to positive strand reads.""")
@@ -154,14 +158,14 @@ def extract_reads(args, chrom_sizes, idx):
 			# pos_reads and neg_reads are the same dictionary in that case.
 			
 			if read.is_forward:
-				pos_reads[chrom][start] += 1
+				pos_reads[chrom][end-1 if args.three_prime else start] += 1
 				if args.fragments:
-					pos_reads[chrom][end-1] += 1
-				
+					pos_reads[chrom][start if args.three_prime else end-1] += 1
+
 			else:
-				neg_reads[chrom][end-1] += 1
+				neg_reads[chrom][start if args.three_prime else end-1] += 1
 				if args.fragments:
-					neg_reads[chrom][start] += 1
+					neg_reads[chrom][end-1 if args.three_prime else start] += 1
 		
 		bam.close()
 	
