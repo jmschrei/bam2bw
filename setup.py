@@ -10,6 +10,7 @@ setup(
     license='LICENSE.txt',
     description='A command-line tool for converting SAM/BAM/fragment.tsv files into un/stranded bp resolution BigWig files. ',
     install_requires=[
+        "joblib",
         "numpy",
         "pysam",
 		"pyfaidx",
