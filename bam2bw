@@ -80,10 +80,14 @@ for filename in args.filename:
 # quickly process the FASTA file so that we do not have to scan through the
 # entire thing just to get the sizes.
 
+def is_fasta(path):
+    base = path.rstrip(".gz")
+    return base.endswith((".fa", ".fasta", ".fna", ".fas"))
+
 chrom_sizes = []
 
 # If provided a FASTA file, read the lengths of the sequences
-if args.sizes.endswith(".fa"):
+if is_fasta(args.sizes):
 	fa = pyfaidx.Fasta(args.sizes)
 	for chrom, seq in fa.items():
 		chrom_sizes.append((chrom, len(seq)))
