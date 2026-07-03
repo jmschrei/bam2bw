@@ -11,6 +11,7 @@ import gzip
 import numpy
 import argparse
 import collections
+import multiprocessing
 
 import pysam
 import pyBigWig
@@ -138,11 +139,11 @@ def extract_reads(args, chrom_sizes, idx):
 				if chrom not in missing_chroms:
 					missing_chroms.add(chrom)
 					if args.verbose:
-						print("{} encountered in input but not in FASTA/chrom sizes.".format(
+						tqdm.write("{} encountered in input but not in FASTA/chrom sizes.".format(
 							chrom))
-					
+
 				continue
-			
+
 			start = read.reference_start + args.pos_shift
 			end = read.reference_end + args.neg_shift
 			
@@ -183,7 +184,7 @@ def extract_reads(args, chrom_sizes, idx):
 		# that we want both the start and the end of the entry, which is controlled
 		# using the -f flag, but we do not handle strandedness here.
 
-		for line in tqdm(f, disable=not args.verbose):
+		for line in tqdm(f, disable=not args.verbose, position=idx, desc=name):
 			# Check whether the chrom is in the allowable chroms. Otherwise, discard.
 			
 			chrom, start, end = line.split()[:3]
@@ -191,11 +192,11 @@ def extract_reads(args, chrom_sizes, idx):
 				if chrom not in missing_chroms:
 					missing_chroms.add(chrom)
 					if args.verbose:
-						print("{} encountered in input but not in FASTA/chrom sizes.".format(
+						tqdm.write("{} encountered in input but not in FASTA/chrom sizes.".format(
 							chrom))
-				
+
 				continue
-				
+
 			start = int(float(start)) + args.pos_shift
 			end = int(float(end)) + args.neg_shift
 			
@@ -205,10 +206,21 @@ def extract_reads(args, chrom_sizes, idx):
 
 	return pos_reads, neg_reads
 
+# Share a single lock across the worker processes so that each file's tqdm
+# progress bar renders on its own line (via position=idx) instead of the
+# processes clobbering each other's cursor movements on stdout. The lock is
+# created before Parallel so it is inherited by the forked workers.
+tqdm.set_lock(multiprocessing.RLock())
+
 f = delayed(extract_reads)
 reads = Parallel(n_jobs=args.parallel, backend='multiprocessing')(
 	f(args, chrom_sizes, i) for i in range(len(args.filename))
 )
+
+# The persistent per-file bars leave the cursor part-way up the screen, so
+# drop below them before printing anything else.
+if args.verbose:
+	print("\n" * len(args.filename))
 
 ### Collect the reads into a single object.
 
