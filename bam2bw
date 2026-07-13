@@ -117,6 +117,21 @@ else:
 # First, a function that reads a single file and returns one or two
 # dictionaries of reads. This can be parallelized across files. 
 
+def record_read_end(pos_reads, neg_reads, chrom, start, end, is_forward):
+	if is_forward:
+		reads = pos_reads
+		five_prime = start
+		three_prime = end - 1
+	else:
+		reads = neg_reads
+		five_prime = end - 1
+		three_prime = start
+
+	reads[chrom][three_prime if args.three_prime else five_prime] += 1
+
+	if args.fragments:
+		reads[chrom][five_prime if args.three_prime else three_prime] += 1
+
 def extract_reads(args, chrom_sizes, idx):
 	missing_chroms = set()
 	pos_reads = {}
@@ -162,15 +177,7 @@ def extract_reads(args, chrom_sizes, idx):
 			# strategy works even if the underlying data is not stranded because
 			# pos_reads and neg_reads are the same dictionary in that case.
 			
-			if read.is_forward:
-				pos_reads[chrom][end-1 if args.three_prime else start] += 1
-				if args.fragments:
-					pos_reads[chrom][start if args.three_prime else end-1] += 1
-
-			else:
-				neg_reads[chrom][start if args.three_prime else end-1] += 1
-				if args.fragments:
-					neg_reads[chrom][end-1 if args.three_prime else start] += 1
+			record_read_end(pos_reads, neg_reads, chrom, start, end, read.is_forward)
 		
 		bam.close()
 	
@@ -183,15 +190,15 @@ def extract_reads(args, chrom_sizes, idx):
 		elif filename[-7:] in ('.tsv.gz', '.bed.gz'):
 			f = gzip.open(filename, "rt")
 		
-		# Here, we process the entries in a similar manner to using pysam except that
-		# we assume the coordinates are all fwd strand. We do not explicitly assume
-		# that we want both the start and the end of the entry, which is controlled
-		# using the -f flag, but we do not handle strandedness here.
+		# Here, we process the entries in a similar manner to using pysam. If a sixth
+		# column is present, it is interpreted as the strand. Otherwise, entries are
+		# treated as forward-strand intervals.
 
 		for line in tqdm(f, disable=not args.verbose, position=idx, desc=name):
 			# Check whether the chrom is in the allowable chroms. Otherwise, discard.
 			
-			chrom, start, end = line.split()[:3]
+			fields = line.split()
+			chrom, start, end = fields[:3]
 			if chrom not in pos_reads:
 				if chrom not in missing_chroms:
 					missing_chroms.add(chrom)
@@ -203,10 +210,15 @@ def extract_reads(args, chrom_sizes, idx):
 
 			start = int(float(start)) + args.pos_shift
 			end = int(float(end)) + args.neg_shift
-			
-			pos_reads[chrom][start] += 1
-			if args.fragments:
-				pos_reads[chrom][end-1] += 1
+
+			is_forward = True
+			if len(fields) >= 6:
+				strand = fields[5]
+				if strand not in ("+", "-", "."):
+					raise ValueError("Strand must be one of '+', '-', or '.' when provided.")
+				is_forward = strand != "-"
+
+			record_read_end(pos_reads, neg_reads, chrom, start, end, is_forward)
 
 	return pos_reads, neg_reads
 
