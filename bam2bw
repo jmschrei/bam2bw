@@ -190,15 +190,15 @@ def extract_reads(args, chrom_sizes, idx):
 		elif filename[-7:] in ('.tsv.gz', '.bed.gz'):
 			f = gzip.open(filename, "rt")
 		
-		# Here, we process the entries in a similar manner to using pysam. If a sixth
-		# column is present, it is interpreted as the strand. Otherwise, entries are
-		# treated as forward-strand intervals.
+		# Here, we process the entries in a similar manner to using pysam except that
+		# we assume the coordinates are all fwd strand. We do not explicitly assume
+		# that we want both the start and the end of the entry, which is controlled
+		# using the -f flag, but we do not handle strandedness here.
 
 		for line in tqdm(f, disable=not args.verbose, position=idx, desc=name):
 			# Check whether the chrom is in the allowable chroms. Otherwise, discard.
 			
-			fields = line.split()
-			chrom, start, end = fields[:3]
+			chrom, start, end = line.split()[:3]
 			if chrom not in pos_reads:
 				if chrom not in missing_chroms:
 					missing_chroms.add(chrom)
@@ -211,14 +211,9 @@ def extract_reads(args, chrom_sizes, idx):
 			start = int(float(start)) + args.pos_shift
 			end = int(float(end)) + args.neg_shift
 
-			is_forward = True
-			if len(fields) >= 6:
-				strand = fields[5]
-				if strand not in ("+", "-", "."):
-					raise ValueError("Strand must be one of '+', '-', or '.' when provided.")
-				is_forward = strand != "-"
-
-			record_read_end(pos_reads, neg_reads, chrom, start, end, is_forward)
+			pos_reads[chrom][end-1 if args.three_prime else start] += 1
+			if args.fragments:
+				pos_reads[chrom][start if args.three_prime else end-1] += 1
 
 	return pos_reads, neg_reads
 
