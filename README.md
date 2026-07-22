@@ -110,6 +110,13 @@ bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ### Version Log
 
 ```
+v0.4.2
+======
+
+  - Recognize additional FASTA extensions (.fasta, .fna, .fas) and their .gz variants when passed to -s.
+  - Fixed tqdm progress bars clashing when processing input files in parallel.
+  - Added biopython as an explicit dependency.
+
 v0.4.1
 ======
 
