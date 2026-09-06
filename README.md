@@ -135,6 +135,12 @@ v0.5.0
     reads as a single RNA/fragment tag (e.g. for PRO-seq/PRO-cap) instead of counting
     each mate independently.
 
+v0.4.2
+======
+
+  - Recognize additional FASTA extensions (.fasta, .fna, .fas) and their .gz variants when passed to -s.
+  - Fixed tqdm progress bars clashing when processing input files in parallel.
+  - Added biopython as an explicit dependency.
 
 v0.4.1
 ======
