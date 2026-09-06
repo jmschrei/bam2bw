@@ -7,7 +7,7 @@ A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files 
 `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps. v0.4.0 allows parallel processing of files, even if they are remote, reducing the time needed to process inputs to just the time needed to process the biggest one.
 
 ```
-usage: bam2bw [-h] -s SIZES [-u] [-f | -3] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
+usage: bam2bw [-h] -s SIZES [-u] [-f | -3] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-mp] [--rna5 {read1,read2}] [--opposite_strand] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
 
 This tool will convert BAM files to bigwig files without an intermediate.
 
@@ -25,6 +25,12 @@ options:
                         A shift to apply to positive strand reads.
   -ns NEG_SHIFT, --neg_shift NEG_SHIFT
                         A shift to apply to negative strand reads.
+  -mp, --mate_pairs     Treat paired-end BAM/SAM reads as a single RNA/fragment tag instead of
+                        counting each mate independently (see --rna5/--opposite_strand).
+  --rna5 {read1,read2}  Which mate carries the 5' end of the RNA/fragment. Only used with
+                        --mate_pairs. Default: read1.
+  --opposite_strand     Report the strand of the mate opposite the one chosen by --rna5.
+                        Only used with --mate_pairs.
   -sf SCALE_FACTOR, --scale_factor SCALE_FACTOR
                         A scaling factor to multiply each position by.
   -r, --read_depth      Whether to divide through by total (pre-scaled) read depth.
@@ -96,6 +102,13 @@ Each will return two bigWig files: `test-run.+.bw` and `test-run.-.bw`. When mul
 
 `bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -3`
 
+(11) When a BAM has paired-end reads that jointly represent a single RNA/fragment tag (e.g. PRO-seq/PRO-cap), rather than two independent events (e.g. the two Tn5 cut sites of an ATAC-seq fragment): use `--mate_pairs` so each pair contributes exactly one position instead of one from each mate. `--rna5` picks which mate carries the RNA's 5' end (the other mate's own 5' end is used as the RNA's 3' end), and `-3`/`--opposite_strand` behave as before but are applied to the jointly-determined position/strand:
+
+`bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -mp --rna5 read2 -3`
+
+#### A note on paired-end BAMs
+
+By default, `bam2bw` (like `bedtools genomecov`) counts every mapped alignment record independently, including both mates of a pair. For ATAC-seq/DNase-seq/ChIP-seq this is correct: each mate's end is its own real cut/fragment-boundary event. For assays where a fragment carries exactly one meaningful tag position determined jointly by both mates (PRO-seq, PRO-cap, and similar run-on/CAGE-style protocols), counting both mates independently will roughly double the signal and scatter it across the wrong positions (each mate maps to a different point in the fragment). Use `--mate_pairs` (see example 11) for that case instead.
 
 #### Existing Pipeline
 
@@ -115,6 +128,14 @@ bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ### Version Log
 
 ```
+v0.5.0
+======
+
+  - Added -mp/--mate_pairs, --rna5, and --opposite_strand to jointly count paired-end
+    reads as a single RNA/fragment tag (e.g. for PRO-seq/PRO-cap) instead of counting
+    each mate independently.
+
+
 v0.4.1
 ======
 
