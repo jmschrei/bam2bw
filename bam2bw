@@ -44,7 +44,7 @@ parser.add_argument('-u', '--unstranded', action='store_true',
 end_group = parser.add_mutually_exclusive_group()
 end_group.add_argument('-f', '--fragments', action='store_true', default=False,
 	help="The data is fragments and so both ends should be recorded.")
-end_group.add_argument('-3', '--three_prime', action='store_true', default=False,
+end_group.add_argument('-3p', '--three_prime', action='store_true', default=False,
 	help="Record the 3' end of each read instead of the 5' end.")
 
 parser.add_argument('-ps', '--pos_shift', default=0, type=int,
