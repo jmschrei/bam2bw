@@ -32,7 +32,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument('filename', nargs='+',
 	help="""The SAM/BAM or tsv/tsv.gz file to be processed.""")         
 parser.add_argument('-s', '--sizes', required=True, 
-	help="""A chrom_sizes or FASTA file.""")
+	help="""A chrom_sizes, .fai, or FASTA file. Only the first two columns of
+	a chrom_sizes/.fai file are read. A compressed FASTA must be BGZF, not
+	gzip.""")
 
 # Data properties
 
@@ -87,18 +89,42 @@ def is_fasta(path):
 
 chrom_sizes = []
 
-# If provided a FASTA file, read the lengths of the sequences
+# If provided a FASTA file, read the lengths of the sequences. pyfaidx reads
+# BGZF but not plain gzip, and its own error does not say what to do about it.
 if is_fasta(args.sizes):
-	fa = pyfaidx.Fasta(args.sizes)
+	try:
+		fa = pyfaidx.Fasta(args.sizes)
+	except pyfaidx.UnsupportedCompressionFormat:
+		raise ValueError(("{} is compressed with gzip. Only BGZF is supported "
+			"for compressed FASTA files -- recompress it with `bgzip`, or pass "
+			"a chrom_sizes file instead.").format(args.sizes))
+
 	for chrom, seq in fa.items():
 		chrom_sizes.append((chrom, len(seq)))
 
-# If provided a chrom_sizes file, just use the provided lengths
+# If provided a chrom_sizes file, just use the provided lengths. Only the first
+# two columns are read, so a samtools .fai index works here as well as a
+# two-column chrom_sizes file, and blank lines and # comments are skipped.
 else:
 	with open(args.sizes, "r") as size_file:
-		for line in size_file:
-			chrom, size = line.strip("\r\n").split()
-			chrom_sizes.append((chrom, int(size)))
+		for i, line in enumerate(size_file):
+			line = line.strip()
+			if len(line) == 0 or line.startswith("#"):
+				continue
+
+			fields = line.split()
+			if len(fields) < 2:
+				raise ValueError(("{}, line {}: expected a chromosome name and "
+					"a length, got {}.").format(args.sizes, i + 1, repr(line)))
+
+			try:
+				size = int(fields[1])
+			except ValueError:
+				raise ValueError(("{}, line {}: expected an integer length for "
+					"{}, got {}.").format(args.sizes, i + 1, fields[0],
+						repr(fields[1])))
+
+			chrom_sizes.append((fields[0], size))
 
 ###
 
@@ -144,8 +170,18 @@ def extract_reads(args, chrom_sizes, idx):
 
 				continue
 
+			# A mapped record whose CIGAR is '*' has no reference end, so
+			# there is no position to record for the far end of the read.
+			# reference_end is computed from the CIGAR on every access, so it
+			# is read once here and reused below.
+			reference_end = read.reference_end
+			if reference_end is None:
+				raise ValueError(("{}: read {} is mapped to {} but has no "
+					"CIGAR, so its reference end is unknown.").format(name,
+						read.query_name, chrom))
+
 			start = read.reference_start + args.pos_shift
-			end = read.reference_end + args.neg_shift
+			end = reference_end + args.neg_shift
 			
 			# Here, we need to deal with two related issues.
 			#
@@ -184,10 +220,17 @@ def extract_reads(args, chrom_sizes, idx):
 		# that we want both the start and the end of the entry, which is controlled
 		# using the -f flag, but we do not handle strandedness here.
 
-		for line in tqdm(f, disable=not args.verbose, position=idx, desc=name):
+		for i, line in enumerate(tqdm(f, disable=not args.verbose, position=idx,
+			desc=name)):
+			fields = line.split()
+			if len(fields) < 3:
+				raise ValueError(("{}, line {}: expected at least three columns "
+					"holding a chromosome, a start and an end, got {}.").format(
+						filename, i + 1, repr(line.strip())))
+
 			# Check whether the chrom is in the allowable chroms. Otherwise, discard.
-			
-			chrom, start, end = line.split()[:3]
+
+			chrom, start, end = fields[:3]
 			if chrom not in pos_reads:
 				if chrom not in missing_chroms:
 					missing_chroms.add(chrom)
@@ -197,8 +240,13 @@ def extract_reads(args, chrom_sizes, idx):
 
 				continue
 
-			start = int(float(start)) + args.pos_shift
-			end = int(float(end)) + args.neg_shift
+			try:
+				start = int(float(start)) + args.pos_shift
+				end = int(float(end)) + args.neg_shift
+			except ValueError:
+				raise ValueError(("{}, line {}: expected numeric coordinates, "
+					"got {} and {}.").format(filename, i + 1, repr(start),
+						repr(end)))
 			
 			pos_reads[chrom][start] += 1
 			if args.fragments:
@@ -244,6 +292,35 @@ if len(reads) > 1:
 
 ###
 
+# A bigWig can only hold positions that fall inside the chromosome it declares,
+# and pyBigWig discards anything else without raising or returning an error.
+# That silently removes reads from the output -- either because the sizes file
+# disagrees with the BAM header, or because a shift pushed an end off the edge
+# of a chromosome -- and, worse, read depth would be summed over reads that
+# never reach the file, leaving the track normalized to less than it claims.
+# Discarding them here instead means it can be counted, reported, and excluded
+# from the read depth below.
+
+discarded = collections.defaultdict(int)
+
+for chrom, size in chrom_sizes:
+	strands = [pos_reads[chrom]]
+	if not args.unstranded:
+		strands.append(neg_reads[chrom])
+
+	for counts in strands:
+		idxs = numpy.fromiter(counts.keys(), dtype='int64', count=len(counts))
+
+		for idx in idxs[(idxs < 0) | (idxs >= size)]:
+			discarded[chrom] += counts.pop(idx)
+
+if len(discarded) > 0:
+	print("{} entries fell outside the provided chromosome sizes and were discarded ({}).".format(
+		sum(discarded.values()), ", ".join("{}: {}".format(chrom, count)
+			for chrom, count in discarded.items())))
+
+###
+
 # Now that we have our dictionary(ies) of reads, we need to create bigWig
 # objects and store them. Because the entries need to be sorted along the
 # length of each chromosome we have to convert the dictionaries to numpy arrays
@@ -276,6 +353,9 @@ if args.read_depth:
 	read_depth = sum([sum(pos_reads[chrom].values()) for chrom, _ in chrom_sizes])
 	if not args.unstranded:
 		read_depth += sum([sum(neg_reads[chrom].values()) for chrom, _ in chrom_sizes])
+
+	if args.verbose:
+		print("Dividing through by a read depth of {}.".format(read_depth))
 
 
 for chrom, _ in chrom_sizes:

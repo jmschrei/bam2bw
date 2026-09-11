@@ -120,6 +120,17 @@ pytest
 ### Version Log
 
 ```
+v0.4.3
+======
+
+  - Entries falling outside the chromosome sizes given to -s are now discarded explicitly, with a count reported, instead of being dropped by pyBigWig without notice.
+  - -r now normalizes over the entries actually written rather than over every counted read, so a sizes file that disagrees with the input no longer yields a track summing to less than the scale factor.
+  - -r with -v reports the read depth that was divided through.
+  - A samtools .fai index, or any sizes file with more than two columns, can now be passed to -s; only the first two fields of each line are read.
+  - Blank lines and # comments in a chrom_sizes file are skipped instead of raising.
+  - Malformed BED/tsv lines and mapped reads with no CIGAR now report the file and the offending line or read rather than raising a bare unpacking error.
+  - A gzip-compressed FASTA passed to -s now says that BGZF is required and names the file. Only BGZF has ever worked; the v0.4.2 note about .gz variants refers to BGZF.
+
 v0.4.2
 ======
 
