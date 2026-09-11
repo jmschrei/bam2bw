@@ -208,3 +208,73 @@ def write_intervals(path, entries):
 			outfile.write("\t".join(str(field) for field in entry) + "\n")
 
 	return path
+
+
+def write_paired_bam(path, chrom_sizes, pairs):
+	"""Write a BAM of paired-end reads, mates matched by query name.
+
+	The paired flags are what `--mate_pairs` reads, and they cannot be
+	expressed through `write_bam` because both mates of a pair have to share a
+	query name while `write_bam` names each record after its index. Each mate
+	is written as a proper pair with its mate's placement filled in, which is
+	what an aligner produces and what the proper-pair filter looks for.
+
+	Parameters
+	----------
+	path: str or pathlib.Path
+		The file to write to.
+
+	chrom_sizes: list of (str, int) tuples
+		The chromosomes to put in the BAM header.
+
+	pairs: list of (str, tuple, tuple) tuples
+		One entry per pair, giving the query name shared by both mates and
+		then read 1 and read 2. Each mate is a tuple of the chromosome, the
+		start, the length and whether it is on the reverse strand, optionally
+		followed by extra flag bits to OR in -- 0x100 for secondary, 0x800 for
+		supplementary, or a 0 in place of the proper-pair bit to make the pair
+		improper. Either mate may be None, which writes the other one alone as
+		an orphan.
+
+	Returns
+	-------
+	path: str or pathlib.Path
+		The path that was written to, for convenience.
+	"""
+
+	header = {
+		'HD': {'VN': '1.6', 'SO': 'unsorted'},
+		'SQ': [{'SN': chrom, 'LN': size} for chrom, size in chrom_sizes]
+	}
+
+	tids = {chrom: i for i, (chrom, _) in enumerate(chrom_sizes)}
+
+	with pysam.AlignmentFile(str(path), "wb", header=header) as outfile:
+		for name, read1, read2 in pairs:
+			for mate, is_read1 in ((read1, True), (read2, False)):
+				if mate is None:
+					continue
+
+				chrom, start, length, is_reverse = mate[:4]
+				extra = mate[4] if len(mate) > 4 else 0x2
+				other = read2 if is_read1 else read1
+
+				alignment = pysam.AlignedSegment(outfile.header)
+				alignment.query_name = name
+				alignment.query_sequence = "A" * length
+				alignment.query_qualities = pysam.qualitystring_to_array(
+					"I" * length)
+				alignment.flag = 0x1 | (0x40 if is_read1 else 0x80) | extra
+				alignment.reference_id = tids[chrom]
+				alignment.reference_start = start
+				alignment.mapping_quality = 60
+				alignment.cigar = ((0, length),)
+				alignment.is_reverse = is_reverse
+
+				if other is not None:
+					alignment.next_reference_id = tids[other[0]]
+					alignment.next_reference_start = other[1]
+
+				outfile.write(alignment)
+
+	return path

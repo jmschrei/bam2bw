@@ -40,13 +40,31 @@ parser.add_argument('-s', '--sizes', required=True,
 
 parser.add_argument('-u', '--unstranded', action='store_true',
     help="Have only one, unstranded, output.")
-parser.add_argument('-f', '--fragments', action='store_true', default=False,
+
+end_group = parser.add_mutually_exclusive_group()
+end_group.add_argument('-f', '--fragments', action='store_true', default=False,
 	help="The data is fragments and so both ends should be recorded.")
+end_group.add_argument('-3p', '--three_prime', action='store_true', default=False,
+	help="Record the 3' end of each read instead of the 5' end.")
 
 parser.add_argument('-ps', '--pos_shift', default=0, type=int,
 	help="""A shift to apply to positive strand reads.""")
 parser.add_argument('-ns', '--neg_shift', default=0, type=int,
-	help="""A shift to apply to negative strand reads.""") 
+	help="""A shift to apply to negative strand reads.""")
+
+parser.add_argument('-mp', '--mate_pairs', action='store_true', default=False,
+	help="""Treat paired-end reads as a single RNA/fragment tag instead of
+	counting each mate independently: buffer reads by name, and once both
+	mates of a pair are seen, record one jointly-determined position (see
+	--rna5 and --opposite_strand). BAM/SAM input only.""")
+parser.add_argument('--rna5', choices=('read1', 'read2'), default='read1',
+	help="""Which mate carries the 5' end of the RNA/fragment. The other
+	mate's own 5' end is used as the RNA's 3' end. Only used with
+	--mate_pairs.""")
+parser.add_argument('--opposite_strand', action='store_true', default=False,
+	help="""Report the strand of the mate opposite the one chosen by
+	--rna5, instead of that mate's own strand. Only used with
+	--mate_pairs.""")
 
 parser.add_argument('-sf', '--scale_factor', default=1, type=float,
 	help="""A scaling factor to multiply each position by.""")
@@ -73,6 +91,11 @@ acceptable_formats = '.bam', '.sam', '.tsv', '.tsv.gz', '.bed', '.bed.gz'
 for filename in args.filename:
 	if not filename.endswith(acceptable_formats):
 		raise ValueError("Filenames must end in one of {}.".format(', '.join(acceptable_formats)))
+
+if args.mate_pairs:
+	for filename in args.filename:
+		if not filename.endswith(('.bam', '.sam')):
+			raise ValueError("--mate_pairs only supports BAM/SAM input files.")
 
 # Here, we are determining the chromosomes and their sizes. This is necessary
 # for creating the bigWig header(s) and for figuring out which reads to filter
@@ -139,6 +162,26 @@ else:
 # First, a function that reads a single file and returns one or two
 # dictionaries of reads. This can be parallelized across files. 
 
+MateInfo = collections.namedtuple('MateInfo', ['start', 'end', 'is_forward'])
+
+def record_positions(pos_reads, neg_reads, chrom, five_prime, three_prime, is_forward):
+	reads = pos_reads if is_forward else neg_reads
+
+	reads[chrom][three_prime if args.three_prime else five_prime] += 1
+
+	if args.fragments:
+		reads[chrom][five_prime if args.three_prime else three_prime] += 1
+
+def record_mate_pair(pos_reads, neg_reads, chrom, anchor, other):
+	# The RNA's 5' end is the anchor mate's own 5' end (per --rna5); the RNA's
+	# 3' end is the other mate's own 5' end, since that mate started
+	# sequencing from the opposite end of the fragment.
+	five_prime = anchor.start if anchor.is_forward else anchor.end - 1
+	three_prime = other.start if other.is_forward else other.end - 1
+	is_forward = other.is_forward if args.opposite_strand else anchor.is_forward
+
+	record_positions(pos_reads, neg_reads, chrom, five_prime, three_prime, is_forward)
+
 def extract_reads(args, chrom_sizes, idx):
 	missing_chroms = set()
 	pos_reads = {}
@@ -154,12 +197,20 @@ def extract_reads(args, chrom_sizes, idx):
 	name = filename.split("/")[-1]
 	if filename.endswith(".bam"):
 		bam = pysam.AlignmentFile(filename, "rb")
+		pending_mates = {}
+
+		# These are read once per read in the loop below, which is hot enough
+		# that the attribute lookups show up in a profile.
+		mate_pairs = args.mate_pairs
+		fragments = args.fragments
+		use_three_prime = args.three_prime
+
 		for read in tqdm(bam.fetch(until_eof=True), disable=not args.verbose, position=idx, desc=name):
 			if read.is_unmapped:
 				continue
 
 			# Check whether the chrom is in the allowable chroms. Otherwise, discard.
-			
+
 			chrom = read.reference_name
 			if chrom not in pos_reads:
 				if chrom not in missing_chroms:
@@ -182,28 +233,56 @@ def extract_reads(args, chrom_sizes, idx):
 
 			start = read.reference_start + args.pos_shift
 			end = reference_end + args.neg_shift
-			
-			# Here, we need to deal with two related issues.
-			#
-			#    (1) Does the read map to the fwd or rev strand?
-			#    (2) Are we mapping the start or the strand and the end (fragments)?
-			#
-			# Accordingly, we first check to see the strand the read is on and take the
-			# start of the read (start for fwd, end-1 for bwd reads). Then, we need to
-			# check whether we want both starts and ends and record both if so. This
-			# strategy works even if the underlying data is not stranded because
-			# pos_reads and neg_reads are the same dictionary in that case.
-			
-			if read.is_forward:
-				pos_reads[chrom][start] += 1
-				if args.fragments:
-					pos_reads[chrom][end-1] += 1
-				
+
+			if mate_pairs:
+				# Only consider one alignment per mate so that the two halves
+				# of a pair can be matched up unambiguously by read name.
+				if not read.is_proper_pair or read.is_secondary or read.is_supplementary:
+					continue
+
+				partner = pending_mates.pop(read.query_name, None)
+				mate_info = MateInfo(start, end, read.is_forward)
+
+				if partner is None or partner[0] == read.is_read1:
+					# Either the first mate seen for this name, or an
+					# unexpected duplicate record for the same mate -- in the
+					# latter case the stale entry is dropped in favor of this one.
+					pending_mates[read.query_name] = (read.is_read1, mate_info)
+					continue
+
+				_, partner_info = partner
+				read1_info = mate_info if read.is_read1 else partner_info
+				read2_info = partner_info if read.is_read1 else mate_info
+
+				if args.rna5 == 'read1':
+					anchor, other = read1_info, read2_info
+				else:
+					anchor, other = read2_info, read1_info
+
+				record_mate_pair(pos_reads, neg_reads, chrom, anchor, other)
 			else:
-				neg_reads[chrom][end-1] += 1
-				if args.fragments:
-					neg_reads[chrom][start] += 1
-		
+				# Here, we need to deal with two related issues.
+				#
+				#    (1) Does the read map to the fwd or rev strand?
+				#    (2) Are we mapping the start or the strand and the end (fragments)?
+				#
+				# Accordingly, we first check to see the strand the read is on and take the
+				# start of the read (start for fwd, end-1 for bwd reads). Then, we need to
+				# check whether we want both starts and ends and record both if so. This
+				# strategy works even if the underlying data is not stranded because
+				# pos_reads and neg_reads are the same dictionary in that case.
+
+				if read.is_forward:
+					five_prime, three_prime = start, end - 1
+					reads = pos_reads
+				else:
+					five_prime, three_prime = end - 1, start
+					reads = neg_reads
+
+				reads[chrom][three_prime if use_three_prime else five_prime] += 1
+				if fragments:
+					reads[chrom][five_prime if use_three_prime else three_prime] += 1
+
 		bam.close()
 	
 	elif filename[-4:] in ('.tsv', '.bed') or filename[-7:] in ('.tsv.gz', '.bed.gz'):
@@ -247,10 +326,10 @@ def extract_reads(args, chrom_sizes, idx):
 				raise ValueError(("{}, line {}: expected numeric coordinates, "
 					"got {} and {}.").format(filename, i + 1, repr(start),
 						repr(end)))
-			
-			pos_reads[chrom][start] += 1
+
+			pos_reads[chrom][end-1 if args.three_prime else start] += 1
 			if args.fragments:
-				pos_reads[chrom][end-1] += 1
+				pos_reads[chrom][start if args.three_prime else end-1] += 1
 
 	return pos_reads, neg_reads
 

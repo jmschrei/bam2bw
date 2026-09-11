@@ -23,6 +23,7 @@ from .conftest import FASTA_EXTENSIONS
 from .synthetic import write_bam
 from .synthetic import write_chrom_sizes
 from .synthetic import write_intervals
+from .synthetic import write_paired_bam
 
 
 # `bam2bw` is a script rather than an importable module, so every test here
@@ -1195,6 +1196,254 @@ def test_missing_output_directory_is_rejected(run, bam, sizes, tmp_path):
 	assert process.returncode != 0
 
 
+## -3p/--three_prime
+#
+# The mirror of the default: record the far end of the read rather than the
+# near one. For a forward read that is reference_end - 1 and for a reverse read
+# it is reference_start, so the expected positions are the default ones with
+# the two strands' roles swapped.
+
+
+def test_three_prime_bam(stranded, bam, sizes):
+	pos, neg = stranded(bam, "-s", sizes, "-3p")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [149, 229])
+	assert_array_almost_equal(counts, [2, 1], 4)
+
+	positions, counts = entries(pos, "chr2")
+	assert_array_almost_equal(positions, [74])
+	assert_array_almost_equal(counts, [1], 4)
+
+	positions, counts = entries(neg, "chr1")
+	assert_array_almost_equal(positions, [300, 400])
+	assert_array_almost_equal(counts, [2, 1], 4)
+
+	positions, counts = entries(neg, "chr2")
+	assert_array_almost_equal(positions, [80])
+	assert_array_almost_equal(counts, [1], 4)
+
+
+def test_three_prime_is_the_other_end_of_fragments(stranded, bam, sizes):
+	"""-f records both ends, so every position -3p records must be one of
+	them, and the two together must be the -f set."""
+
+	both, both_neg = stranded(bam, "-s", sizes, "-f", name="frag")
+	five, five_neg = stranded(bam, "-s", sizes, name="five")
+	three, three_neg = stranded(bam, "-s", sizes, "-3p", name="three")
+
+	for chrom, _ in CHROM_SIZES:
+		assert set(five[chrom]) | set(three[chrom]) == set(both[chrom])
+		assert set(five_neg[chrom]) | set(three_neg[chrom]) == set(both_neg[chrom])
+
+
+def test_three_prime_bed(stranded, bed, sizes):
+	pos, _ = stranded(bed, "-s", sizes, "-3p")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [149, 229])
+	assert_array_almost_equal(counts, [2, 1], 4)
+
+	positions, counts = entries(pos, "chr2")
+	assert_array_almost_equal(positions, [74])
+	assert_array_almost_equal(counts, [1], 4)
+
+
+def test_three_prime_unstranded(unstranded, bam, sizes):
+	values = unstranded(bam, "-s", sizes, "-3p")
+
+	positions, counts = entries(values, "chr1")
+	assert_array_almost_equal(positions, [149, 229, 300, 400])
+	assert_array_almost_equal(counts, [2, 1, 2, 1], 4)
+
+
+def test_three_prime_preserves_total_signal(stranded, bam, sizes):
+	pos, neg = stranded(bam, "-s", sizes, name="five")
+	pos_3, neg_3 = stranded(bam, "-s", sizes, "-3p", name="three")
+
+	assert total(pos_3) + total(neg_3) == total(pos) + total(neg)
+
+
+def test_three_prime_and_fragments_are_mutually_exclusive(run, bam, sizes):
+	process = run(bam, "-s", sizes, "-f", "-3p")
+
+	assert process.returncode == 2
+	assert "not allowed with" in process.stderr
+
+
+## -mp/--mate_pairs
+#
+# A pair carries one tag, not two. The RNA's 5' end is the 5' end of whichever
+# mate --rna5 names, and its 3' end is the *other* mate's own 5' end, since a
+# read can only ever reveal its own 5'-most base. The layout below is chosen so
+# that every one of those four positions is distinct:
+#
+#   pairA  read1 fwd chr1:100-150   read2 rev chr1:300-350
+#   pairB  read1 rev chr1:600-650   read2 fwd chr1:400-450
+#   pairC  read1 fwd chr2:100-140   read2 rev chr2:200-240
+#
+# so read1's own 5' ends are 100 / 649 / 100 and read2's are 349 / 400 / 239.
+
+
+@pytest.fixture
+def paired(data_dir):
+	return write_paired_bam(data_dir / "paired.bam", CHROM_SIZES, [
+		("pairA", ("chr1", 100, 50, False), ("chr1", 300, 50, True)),
+		("pairB", ("chr1", 600, 50, True), ("chr1", 400, 50, False)),
+		("pairC", ("chr2", 100, 40, False), ("chr2", 200, 40, True))
+	])
+
+
+@pytest.mark.parametrize("flags,pos_chr1,pos_chr2,neg_chr1,neg_chr2", [
+	([], [100], [100], [649], []),
+	(["-3p"], [349], [239], [400], []),
+	(["--opposite_strand"], [649], [], [100], [100]),
+	(["-3p", "--opposite_strand"], [400], [], [349], [239]),
+	(["--rna5", "read2"], [400], [], [349], [239]),
+	(["--rna5", "read2", "-3p"], [649], [], [100], [100]),
+	(["--rna5", "read2", "--opposite_strand"], [349], [239], [400], []),
+	(["--rna5", "read2", "-3p", "--opposite_strand"], [100], [100], [649], [])
+])
+def test_mate_pairs_records_one_position_per_pair(stranded, paired, sizes,
+	flags, pos_chr1, pos_chr2, neg_chr1, neg_chr2):
+	pos, neg = stranded(paired, "-s", sizes, "-mp", *flags)
+
+	assert_array_almost_equal(entries(pos, "chr1")[0], pos_chr1)
+	assert_array_almost_equal(entries(pos, "chr2")[0], pos_chr2)
+	assert_array_almost_equal(entries(neg, "chr1")[0], neg_chr1)
+	assert_array_almost_equal(entries(neg, "chr2")[0], neg_chr2)
+
+	# Three pairs in, three counts out, wherever they land.
+	assert total(pos) + total(neg) == 3
+
+
+def test_mate_pairs_halves_the_count(stranded, paired, sizes):
+	"""Without -mp each mate is an independent event, which is the doubling
+	the flag exists to remove."""
+
+	pos, neg = stranded(paired, "-s", sizes, name="plain")
+	pos_mp, neg_mp = stranded(paired, "-s", sizes, "-mp", name="paired")
+
+	assert total(pos) + total(neg) == 6
+	assert total(pos_mp) + total(neg_mp) == 3
+
+
+def test_without_mate_pairs_each_mate_counts_separately(stranded, paired,
+	sizes):
+	pos, neg = stranded(paired, "-s", sizes)
+
+	assert_array_almost_equal(entries(pos, "chr1")[0], [100, 400])
+	assert_array_almost_equal(entries(pos, "chr2")[0], [100])
+	assert_array_almost_equal(entries(neg, "chr1")[0], [349, 649])
+	assert_array_almost_equal(entries(neg, "chr2")[0], [239])
+
+
+def test_mate_pairs_fragments_records_both_ends(stranded, paired, sizes):
+	"""With -f the pair contributes both of its jointly-determined ends, on
+	the strand --rna5 selects."""
+
+	pos, neg = stranded(paired, "-s", sizes, "-mp", "-f")
+
+	assert_array_almost_equal(entries(pos, "chr1")[0], [100, 349])
+	assert_array_almost_equal(entries(pos, "chr2")[0], [100, 239])
+	assert_array_almost_equal(entries(neg, "chr1")[0], [400, 649])
+
+	assert total(pos) + total(neg) == 6
+
+
+def test_mate_pairs_does_not_need_a_name_sorted_bam(stranded, sizes, data_dir,
+	tmp_path):
+	"""Mates are buffered by name as the file streams, so the order records
+	appear in must not change the result."""
+
+	forward = write_paired_bam(tmp_path / "forward.bam", CHROM_SIZES, [
+		("pairA", ("chr1", 100, 50, False), ("chr1", 300, 50, True)),
+		("pairB", ("chr1", 600, 50, True), ("chr1", 400, 50, False))
+	])
+	interleaved = write_paired_bam(tmp_path / "interleaved.bam", CHROM_SIZES, [
+		("pairA", ("chr1", 100, 50, False), None),
+		("pairB", ("chr1", 600, 50, True), None),
+		("pairA", None, ("chr1", 300, 50, True)),
+		("pairB", None, ("chr1", 400, 50, False))
+	])
+
+	first, first_neg = stranded(forward, "-s", sizes, "-mp", name="forward")
+	second, second_neg = stranded(interleaved, "-s", sizes, "-mp",
+		name="interleaved")
+
+	assert first == second
+	assert first_neg == second_neg
+
+
+@pytest.mark.parametrize("label,extra", [
+	("improper pair", 0),
+	("secondary", 0x2 | 0x100),
+	("supplementary", 0x2 | 0x800)
+])
+def test_mate_pairs_skips_flagged_records(stranded, sizes, tmp_path, label,
+	extra):
+	"""Only one primary alignment per mate can be matched up unambiguously by
+	name, so the rest are dropped."""
+
+	path = write_paired_bam(tmp_path / "flagged.bam", CHROM_SIZES, [
+		("good", ("chr1", 100, 50, False), ("chr1", 300, 50, True)),
+		("bad", ("chr1", 500, 50, False, extra), ("chr1", 700, 50, True, extra))
+	])
+
+	pos, neg = stranded(path, "-s", sizes, "-mp")
+
+	assert_array_almost_equal(entries(pos, "chr1")[0], [100])
+	assert total(pos) + total(neg) == 1
+
+
+def test_mate_pairs_skips_orphans(stranded, sizes, tmp_path):
+	"""A mate whose partner never appears contributes nothing."""
+
+	path = write_paired_bam(tmp_path / "orphan.bam", CHROM_SIZES, [
+		("good", ("chr1", 100, 50, False), ("chr1", 300, 50, True)),
+		("orphan", ("chr1", 500, 50, False), None)
+	])
+
+	pos, neg = stranded(path, "-s", sizes, "-mp")
+
+	assert_array_almost_equal(entries(pos, "chr1")[0], [100])
+	assert total(pos) + total(neg) == 1
+
+
+@pytest.mark.parametrize("other", ["bed", "bed_gz", "tsv", "tsv_gz"])
+def test_mate_pairs_rejects_interval_input(run, sizes, request, other):
+	"""Interval files carry no mate information."""
+
+	process = run(request.getfixturevalue(other), "-s", sizes, "-mp")
+
+	assert process.returncode != 0
+	assert "--mate_pairs only supports BAM/SAM" in process.stderr
+
+
+def test_opposite_strand_duplicates_flipping_rna5_and_three_prime(stranded,
+	paired, sizes):
+	"""--opposite_strand adds no track that the other two flags cannot already
+	produce: the eight combinations collapse to four distinct outputs."""
+
+	tracks = {}
+	for rna5 in ("read1", "read2"):
+		for three_prime in ([], ["-3p"]):
+			for opposite in ([], ["--opposite_strand"]):
+				name = "{}{}{}".format(rna5, "_3p" if three_prime else "",
+					"_opp" if opposite else "")
+				pos, neg = stranded(paired, "-s", sizes, "-mp", "--rna5", rna5,
+					*(three_prime + opposite), name=name)
+				tracks[name] = (sorted(entries(pos, "chr1")[0]),
+					sorted(entries(neg, "chr1")[0]))
+
+	assert tracks["read1"] == tracks["read2_3p_opp"]
+	assert tracks["read1_3p"] == tracks["read2_opp"]
+	assert tracks["read1_opp"] == tracks["read2_3p"]
+	assert tracks["read1_3p_opp"] == tracks["read2"]
+
+	assert len(set(map(str, tracks.values()))) == 4
+
+
 ## Known bugs
 #
 # These describe how the tool should behave. They are skipped rather than
@@ -1319,3 +1568,15 @@ def test_discarded_entries_are_excluded_from_read_depth_unstranded(run,
 
 	assert process.returncode == 0
 	assert_array_almost_equal(total(read_bigwig(tmp_path / "out.bw")), 1.0, 4)
+
+
+@pytest.mark.skip(reason="BUG: -mp on a single-end BAM drops every read, since "
+	"none is a proper pair, and writes empty bigWigs with exit 0 instead of "
+	"saying the flag does not apply to the input")
+def test_mate_pairs_on_a_single_end_bam_is_reported(run, bam, sizes, tmp_path):
+	process = run(bam, "-s", sizes, "-mp")
+
+	reported = (process.returncode != 0
+		or "pair" in (process.stdout + process.stderr).lower())
+
+	assert reported
