@@ -90,3 +90,28 @@ def total(values):
 	"""
 
 	return sum(sum(chrom.values()) for chrom in values.values())
+
+
+def chrom_lengths(path):
+	"""Read the chromosome lengths out of a bigWig header.
+
+	The lengths never appear in the values, so a sizes file or FASTA that
+	gives the wrong length produces a correct-looking track with a wrong
+	header. This is the only way to see that.
+
+	Parameters
+	----------
+	path: str or pathlib.Path
+		The bigWig file to read.
+
+	Returns
+	-------
+	lengths: dict of str to int
+		A mapping from chromosome name to the length in the header.
+	"""
+
+	bw = pyBigWig.open(str(path))
+	lengths = dict(bw.chroms())
+	bw.close()
+
+	return lengths

@@ -96,10 +96,17 @@ def write_bam(path, chrom_sizes, reads, unmapped=()):
 		The chromosomes to put in the BAM header. Reads may only refer to
 		chromosomes in this list.
 
-	reads: list of (str, int, int, bool) tuples
+	reads: list of tuples
 		One tuple per read, giving the chromosome, the 0-based reference
 		start, the length of the alignment, and whether the read is on the
-		reverse strand.
+		reverse strand. Two optional fields may follow: a CIGAR as a list of
+		(operation, length) pairs, which replaces the exact match implied by
+		the length and is how soft clips, splices and indels are built -- an
+		empty CIGAR leaves the record's CIGAR as '*' -- and a
+		SAM flag, which is how the duplicate, secondary, supplementary and
+		QC-fail bits are set, and a mapping quality, which defaults to 60. The
+		query sequence is sized from the CIGAR so that the record stays
+		valid.
 
 	unmapped: list of (str, int, int) tuples, optional
 		One tuple per unmapped read to append, giving a chromosome, a start,
@@ -124,17 +131,32 @@ def write_bam(path, chrom_sizes, reads, unmapped=()):
 	tids = {chrom: i for i, (chrom, _) in enumerate(chrom_sizes)}
 
 	with pysam.AlignmentFile(str(path), "wb", header=header) as outfile:
-		for i, (chrom, start, length, is_reverse) in enumerate(reads):
+		for i, record in enumerate(reads):
+			chrom, start, length, is_reverse = record[:4]
+			cigar = tuple(record[4]) if len(record) > 4 else ((0, length),)
+			flag = record[5] if len(record) > 5 else 0
+			mapping_quality = record[6] if len(record) > 6 else 60
+
+			# Matches, insertions and soft clips consume the query; deletions,
+			# splices and hard clips do not.
+			query_length = sum(n for operation, n in cigar
+				if operation in (0, 1, 4)) if cigar else length
+
 			alignment = pysam.AlignedSegment(outfile.header)
 			alignment.query_name = "read{}".format(i)
-			alignment.query_sequence = "A" * length
-			alignment.query_qualities = pysam.qualitystring_to_array("I" * length)
-			alignment.flag = 0
+			alignment.query_sequence = "A" * query_length
+			alignment.query_qualities = pysam.qualitystring_to_array(
+				"I" * query_length)
+			alignment.flag = flag
 			alignment.reference_id = tids[chrom]
 			alignment.reference_start = start
-			alignment.mapping_quality = 60
-			alignment.cigar = ((0, length),)
+			alignment.mapping_quality = mapping_quality
 			alignment.is_reverse = is_reverse
+
+			# An empty CIGAR leaves the record with '*', which is legal for a
+			# mapped read and makes reference_end unavailable.
+			if cigar:
+				alignment.cigar = cigar
 
 			outfile.write(alignment)
 

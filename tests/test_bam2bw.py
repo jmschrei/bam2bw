@@ -1,6 +1,8 @@
 # test_bam2bw.py
 # Contact: Jacob Schreiber <jmschreiber91@gmail.com>
 
+import gzip
+import shutil
 import subprocess
 import sys
 
@@ -9,6 +11,7 @@ import pytest
 
 from numpy.testing import assert_array_almost_equal
 
+from .bigwig import chrom_lengths
 from .bigwig import entries
 from .bigwig import read_bigwig
 from .bigwig import total
@@ -17,6 +20,7 @@ from .conftest import BAM2BW
 from .conftest import CHROM_SIZES
 from .conftest import FASTA_EXTENSIONS
 
+from .synthetic import write_bam
 from .synthetic import write_chrom_sizes
 from .synthetic import write_intervals
 
@@ -118,6 +122,18 @@ def test_fasta_is_accepted(stranded, bam, fastas, extension):
 	positions, counts = entries(pos, "chr1")
 	assert_array_almost_equal(positions, [100, 200])
 	assert_array_almost_equal(counts, [2, 1], 4)
+
+
+@pytest.mark.parametrize("extension", FASTA_EXTENSIONS)
+def test_fasta_lengths_match_chrom_sizes(run, bam, fastas, tmp_path,
+	extension):
+	"""The lengths only reach the bigWig header, so a FASTA read wrongly
+	produces a correct-looking track over a wrong chromosome."""
+
+	process = run(bam, "-s", fastas[extension])
+	assert process.returncode == 0
+
+	assert chrom_lengths(tmp_path / "out.+.bw") == dict(CHROM_SIZES)
 
 
 @pytest.mark.parametrize("extension", FASTA_EXTENSIONS)
@@ -769,6 +785,384 @@ def test_total_signal_is_conserved(run, tmp_path, bam, sizes, is_unstranded,
 	assert written == 8 * (2 if fragments else 1)
 
 
+## CIGAR handling
+#
+# The recorded positions come from reference_start and reference_end, so what
+# a read covers on the reference -- not how long the sequenced fragment was --
+# decides where its ends land. These pin the arithmetic for the CIGAR
+# operations that show up in real alignments.
+
+
+@pytest.mark.parametrize("label,cigar,five_prime,three_prime", [
+	("50M exact match", [(0, 50)], 100, 149),
+	("10S30M10S soft clipped", [(4, 10), (0, 30), (4, 10)], 100, 129),
+	("10H30M hard clipped", [(5, 10), (0, 30)], 100, 129),
+	("20M100N20M spliced", [(0, 20), (3, 100), (0, 20)], 100, 239),
+	("20M5D20M deletion", [(0, 20), (2, 5), (0, 20)], 100, 144),
+	("20M5I20M insertion", [(0, 20), (1, 5), (0, 20)], 100, 139)
+])
+def test_cigar_sets_the_reference_span(stranded, sizes, tmp_path, label, cigar,
+	five_prime, three_prime):
+	path = write_bam(tmp_path / "cigar.bam", CHROM_SIZES,
+		[("chr1", 100, 0, False, cigar)])
+
+	pos, _ = stranded(path, "-s", sizes, "-f")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, sorted([five_prime, three_prime]))
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+def test_soft_clips_do_not_move_the_five_prime_end(stranded, sizes, tmp_path):
+	"""Adapter bases left on the read must not shift the recorded cut site."""
+
+	clipped = write_bam(tmp_path / "clipped.bam", CHROM_SIZES,
+		[("chr1", 100, 0, False, [(4, 10), (0, 30), (4, 10)])])
+	plain = write_bam(tmp_path / "plain.bam", CHROM_SIZES,
+		[("chr1", 100, 30, False)])
+
+	from_clipped, _ = stranded(clipped, "-s", sizes, "-f", name="clipped")
+	from_plain, _ = stranded(plain, "-s", sizes, "-f", name="plain")
+
+	assert from_clipped == from_plain
+
+
+def test_spliced_reverse_read(stranded, sizes, tmp_path):
+	"""On the reverse strand the 5' end of a spliced read is on the far side
+	of the intron, which is the case most likely to be got backwards."""
+
+	path = write_bam(tmp_path / "spliced.bam", CHROM_SIZES,
+		[("chr1", 100, 0, True, [(0, 20), (3, 100), (0, 20)])])
+
+	_, neg = stranded(path, "-s", sizes, "-f")
+
+	positions, counts = entries(neg, "chr1")
+	assert_array_almost_equal(positions, [100, 239])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+## SAM flags
+#
+# Beyond the unmapped bit, `bam2bw` does no flag filtering at all. Every
+# remaining record is counted, so a PCR duplicate, a secondary alignment of a
+# multi-mapping read, and a QC-failed record each contribute a count. These
+# tests exist to make that explicit, so that adding a filter later is a
+# deliberate change to a documented behaviour rather than a silent one.
+
+
+@pytest.mark.parametrize("label,flag", [
+	("PCR duplicate", 1024),
+	("secondary alignment", 256),
+	("supplementary alignment", 2048),
+	("QC fail", 512)
+])
+def test_flagged_records_are_still_counted(stranded, sizes, tmp_path, label,
+	flag):
+	path = write_bam(tmp_path / "flagged.bam", CHROM_SIZES,
+		[("chr1", 100, 50, False, [(0, 50)], flag)])
+
+	pos, _ = stranded(path, "-s", sizes)
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100])
+	assert_array_almost_equal(counts, [1], 4)
+
+
+@pytest.mark.parametrize("mapping_quality", [0, 1, 60])
+def test_low_mapping_quality_is_not_filtered(stranded, sizes, tmp_path,
+	mapping_quality):
+	"""There is no -q option, so a multi-mapping read at MAPQ 0 counts the
+	same as a uniquely mapping one."""
+
+	path = write_bam(tmp_path / "mapq.bam", CHROM_SIZES,
+		[("chr1", 100, 50, False, [(0, 50)], 0, mapping_quality)])
+
+	pos, _ = stranded(path, "-s", sizes)
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100])
+	assert_array_almost_equal(counts, [1], 4)
+
+
+## Chromosome boundaries
+
+
+def test_read_at_position_zero(stranded, sizes, tmp_path):
+	path = write_bam(tmp_path / "zero.bam", CHROM_SIZES,
+		[("chr1", 0, 50, False)])
+
+	pos, _ = stranded(path, "-s", sizes, "-f")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [0, 49])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+def test_read_ending_on_the_last_base(stranded, sizes, tmp_path):
+	"""chr1 is 1000bp, so 999 is the last position a bigWig entry may use."""
+
+	path = write_bam(tmp_path / "last.bam", CHROM_SIZES,
+		[("chr1", 950, 50, False), ("chr1", 950, 50, True)])
+
+	pos, neg = stranded(path, "-s", sizes, "-f")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [950, 999])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+	positions, counts = entries(neg, "chr1")
+	assert_array_almost_equal(positions, [950, 999])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+def test_negative_position_from_a_shift_is_an_error(run, sizes, tmp_path):
+	"""A shift large enough to push a read off the front of the chromosome
+	cannot be written, and must fail rather than write a corrupt file."""
+
+	path = write_bam(tmp_path / "near_zero.bam", CHROM_SIZES,
+		[("chr1", 10, 20, False)])
+
+	process = run(path, "-s", sizes, "--pos_shift=-100")
+
+	assert process.returncode != 0
+
+
+## Degenerate inputs
+
+
+def test_empty_bam(run, sizes, tmp_path):
+	path = write_bam(tmp_path / "empty.bam", CHROM_SIZES, [])
+
+	process = run(path, "-s", sizes)
+
+	assert process.returncode == 0
+	assert total(read_bigwig(tmp_path / "out.+.bw")) == 0
+	assert total(read_bigwig(tmp_path / "out.-.bw")) == 0
+
+
+def test_empty_bam_with_read_depth(run, sizes, tmp_path):
+	"""Read-depth normalization divides by the total count, which is zero
+	here, so this is the input that would raise ZeroDivisionError."""
+
+	path = write_bam(tmp_path / "empty.bam", CHROM_SIZES, [])
+
+	process = run(path, "-s", sizes, "-r")
+
+	assert process.returncode == 0
+	assert total(read_bigwig(tmp_path / "out.+.bw")) == 0
+
+
+def test_bam_with_no_reads_on_any_listed_chromosome(run, bam, tmp_path):
+	"""Every read is on a chromosome the sizes file does not mention."""
+
+	other = write_chrom_sizes(tmp_path / "other.chrom.sizes",
+		[("chrOther", 100)])
+
+	process = run(bam, "-s", other)
+
+	assert process.returncode == 0
+	assert total(read_bigwig(tmp_path / "out.+.bw")) == 0
+
+
+def test_scale_factor_of_zero(stranded, bam, sizes):
+	"""Positions are still written, carrying a value of zero."""
+
+	pos, _ = stranded(bam, "-s", sizes, "-sf", 0)
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100, 200])
+	assert_array_almost_equal(counts, [0, 0], 4)
+
+
+def test_single_base_read(stranded, sizes, tmp_path):
+	"""A 1bp read has the same 5' and 3' end, so -f records two counts at one
+	position rather than one count at each of two."""
+
+	path = write_bam(tmp_path / "one.bam", CHROM_SIZES,
+		[("chr1", 100, 1, False)])
+
+	pos, _ = stranded(path, "-s", sizes, "-f")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100])
+	assert_array_almost_equal(counts, [2], 4)
+
+
+def test_zero_length_interval(stranded, sizes, tmp_path):
+	"""Some fragment files contain start == end."""
+
+	path = write_intervals(tmp_path / "zero.bed", [("chr1", 100, 100)])
+
+	pos, _ = stranded(path, "-s", sizes, "-f")
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [99, 100])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+## chrom_sizes and FASTA parsing robustness
+
+
+def test_crlf_line_endings(stranded, bam, sizes, tmp_path):
+	"""A chrom_sizes file written on Windows."""
+
+	path = tmp_path / "crlf.chrom.sizes"
+	path.write_bytes(b"chr1\t1000\r\nchr2\t500\r\nchr3\t200\r\n")
+
+	expected, _ = stranded(bam, "-s", sizes, name="unix")
+	actual, _ = stranded(bam, "-s", path, name="crlf")
+
+	assert actual == expected
+
+
+def test_space_separated_sizes(stranded, bam, sizes, tmp_path):
+	path = tmp_path / "spaces.chrom.sizes"
+	path.write_text("chr1 1000\nchr2 500\nchr3 200\n")
+
+	expected, _ = stranded(bam, "-s", sizes, name="tabs")
+	actual, _ = stranded(bam, "-s", path, name="spaces")
+
+	assert actual == expected
+
+
+def test_fasta_header_with_a_description(stranded, bam, sizes, tmp_path):
+	"""Reference FASTAs carry an accession and length after the chromosome
+	name. Only the first token names the chromosome in a BAM, so the two have
+	to be matched on that."""
+
+	path = tmp_path / "described.fa"
+	with open(path, "w") as outfile:
+		for chrom, size in CHROM_SIZES:
+			outfile.write(">{} AC:CM000663.2 LN:{}\n".format(chrom, size))
+			outfile.write(("ACGT" * (size // 4 + 1))[:size] + "\n")
+
+	expected, _ = stranded(bam, "-s", sizes, name="sizes")
+	actual, _ = stranded(bam, "-s", path, name="described")
+
+	assert actual == expected
+
+
+def test_bgzipped_fasta(stranded, bam, sizes, fastas, tmp_path):
+	"""pyfaidx reads a BGZF-compressed FASTA, which is what samtools produces
+	and what the .gz half of the accepted extensions means in practice."""
+
+	path = str(tmp_path / "compressed.fa.gz")
+	pysam.tabix_compress(str(fastas[".fa"]), path, force=True)
+
+	expected, _ = stranded(bam, "-s", sizes, name="plain")
+	actual, _ = stranded(bam, "-s", path, name="bgzipped")
+
+	assert actual == expected
+
+
+## Progress reporting under parallelism
+
+
+def test_verbose_with_parallel_files(run, bam, sizes, tmp_path):
+	"""The per-file progress bars share a lock across the worker processes,
+	which is only exercised when more than one file is read at once."""
+
+	process = run(bam, bam, "-s", sizes, "-v", "-p", 2)
+
+	assert process.returncode == 0
+
+	pos = read_bigwig(tmp_path / "out.+.bw")
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100, 200])
+	assert_array_almost_equal(counts, [4, 2], 4)
+
+
+## Malformed input is rejected rather than silently mis-parsed
+#
+# These assert only that the run fails, not what it says. The current messages
+# are bare tracebacks; the point of the tests is that a future change cannot
+# quietly start accepting one of these and writing a track built from a
+# misreading of the file.
+
+
+def test_fai_file_is_rejected(run, bam, fastas, tmp_path):
+	"""A samtools .fai index starts with the two chrom_sizes columns and then
+	carries three more, so it is the malformed sizes file most likely to be
+	passed by accident."""
+
+	pysam.faidx(str(fastas[".fa"]))
+
+	process = run(bam, "-s", str(fastas[".fa"]) + ".fai")
+
+	assert process.returncode != 0
+
+
+@pytest.mark.parametrize("label,content", [
+	("extra column", "chr1\t1000\tfoo\n"),
+	("blank line", "chr1\t1000\n\n"),
+	("comment line", "#genome hg38\nchr1\t1000\n"),
+	("one column", "chr1\n")
+])
+def test_malformed_chrom_sizes_is_rejected(run, bam, tmp_path, label, content):
+	path = tmp_path / "bad.chrom.sizes"
+	path.write_text(content)
+
+	process = run(bam, "-s", path)
+
+	assert process.returncode != 0
+
+
+def test_duplicate_chromosome_in_sizes_is_rejected(run, bam, tmp_path):
+	path = write_chrom_sizes(tmp_path / "duplicate.chrom.sizes",
+		[("chr1", 1000), ("chr1", 1000)])
+
+	process = run(bam, "-s", path)
+
+	assert process.returncode != 0
+
+
+def test_plain_gzipped_fasta_is_rejected(run, bam, fastas, tmp_path):
+	"""pyfaidx reads BGZF but not plain gzip, so a FASTA compressed with gzip
+	fails even though the extension is accepted."""
+
+	path = tmp_path / "plain.fa.gz"
+	with open(fastas[".fa"], "rb") as infile:
+		with gzip.open(path, "wb") as outfile:
+			shutil.copyfileobj(infile, outfile)
+
+	process = run(bam, "-s", path)
+
+	assert process.returncode != 0
+
+
+@pytest.mark.parametrize("label,content", [
+	("two columns", "chr1\t100\n"),
+	("track header", 'track name="peaks"\nchr1\t100\t150\n'),
+	("trailing blank line", "chr1\t100\t150\n\n"),
+	("non-numeric coordinates", "chr1\tstart\tend\n")
+])
+def test_malformed_bed_is_rejected(run, sizes, tmp_path, label, content):
+	path = tmp_path / "bad.bed"
+	path.write_text(content)
+
+	process = run(path, "-s", sizes)
+
+	assert process.returncode != 0
+
+
+def test_mapped_read_without_a_cigar_is_rejected(run, sizes, tmp_path):
+	"""A mapped record whose CIGAR is '*' has no reference end, so there is no
+	3' position for it. It must fail rather than write a track missing it."""
+
+	path = write_bam(tmp_path / "no_cigar.bam", CHROM_SIZES,
+		[("chr1", 100, 50, False, [])])
+
+	process = run(path, "-s", sizes)
+
+	assert process.returncode != 0
+
+
+def test_missing_output_directory_is_rejected(run, bam, sizes, tmp_path):
+	process = run(bam, "-s", sizes, name="no_such_directory/out")
+
+	assert process.returncode != 0
+
+
 ## Known bugs
 #
 # These describe how the tool should behave. They are skipped rather than
@@ -799,3 +1193,39 @@ def test_missing_sam_file_errors(run, sizes, tmp_path):
 	process = run(tmp_path / "does_not_exist.sam", "-s", sizes)
 
 	assert process.returncode != 0
+
+
+@pytest.mark.skip(reason="BUG: a position past the end of the chromosome named "
+	"in the sizes file is dropped by pyBigWig, which reports nothing, so "
+	"bam2bw exits 0 having silently discarded reads")
+def test_out_of_range_positions_are_reported(run, tmp_path):
+	"""A chrom_sizes file shorter than the BAM header -- the wrong assembly,
+	or a truncated file -- makes reads near the end of a chromosome vanish."""
+
+	path = write_bam(tmp_path / "far.bam", [("chr1", 3000)],
+		[("chr1", 100, 50, False), ("chr1", 2000, 50, False)])
+	short = write_chrom_sizes(tmp_path / "short.chrom.sizes", [("chr1", 1000)])
+
+	process = run(path, "-s", short, "-v")
+
+	reported = (process.returncode != 0
+		or "chr1" in process.stdout + process.stderr)
+
+	assert reported
+
+
+@pytest.mark.skip(reason="BUG: read depth is summed over every counted read, "
+	"including ones whose positions are then dropped for being out of range, "
+	"so -r produces a track summing to less than the requested total")
+def test_read_depth_covers_only_what_is_written(run, tmp_path):
+	path = write_bam(tmp_path / "far.bam", [("chr1", 3000)],
+		[("chr1", 100, 50, False), ("chr1", 2000, 50, False)])
+	short = write_chrom_sizes(tmp_path / "short.chrom.sizes", [("chr1", 1000)])
+
+	process = run(path, "-s", short, "-r")
+	assert process.returncode == 0
+
+	written = (total(read_bigwig(tmp_path / "out.+.bw"))
+		+ total(read_bigwig(tmp_path / "out.-.bw")))
+
+	assert_array_almost_equal(written, 1.0, 4)
