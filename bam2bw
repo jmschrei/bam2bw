@@ -172,14 +172,6 @@ def record_positions(pos_reads, neg_reads, chrom, five_prime, three_prime, is_fo
 	if args.fragments:
 		reads[chrom][five_prime if args.three_prime else three_prime] += 1
 
-def record_read_end(pos_reads, neg_reads, chrom, start, end, is_forward):
-	if is_forward:
-		five_prime, three_prime = start, end - 1
-	else:
-		five_prime, three_prime = end - 1, start
-
-	record_positions(pos_reads, neg_reads, chrom, five_prime, three_prime, is_forward)
-
 def record_mate_pair(pos_reads, neg_reads, chrom, anchor, other):
 	# The RNA's 5' end is the anchor mate's own 5' end (per --rna5); the RNA's
 	# 3' end is the other mate's own 5' end, since that mate started
@@ -206,6 +198,12 @@ def extract_reads(args, chrom_sizes, idx):
 	if filename.endswith(".bam"):
 		bam = pysam.AlignmentFile(filename, "rb")
 		pending_mates = {}
+
+		# These are read once per read in the loop below, which is hot enough
+		# that the attribute lookups show up in a profile.
+		mate_pairs = args.mate_pairs
+		fragments = args.fragments
+		use_three_prime = args.three_prime
 
 		for read in tqdm(bam.fetch(until_eof=True), disable=not args.verbose, position=idx, desc=name):
 			if read.is_unmapped:
@@ -236,7 +234,7 @@ def extract_reads(args, chrom_sizes, idx):
 			start = read.reference_start + args.pos_shift
 			end = reference_end + args.neg_shift
 
-			if args.mate_pairs:
+			if mate_pairs:
 				# Only consider one alignment per mate so that the two halves
 				# of a pair can be matched up unambiguously by read name.
 				if not read.is_proper_pair or read.is_secondary or read.is_supplementary:
@@ -274,7 +272,16 @@ def extract_reads(args, chrom_sizes, idx):
 				# strategy works even if the underlying data is not stranded because
 				# pos_reads and neg_reads are the same dictionary in that case.
 
-				record_read_end(pos_reads, neg_reads, chrom, start, end, read.is_forward)
+				if read.is_forward:
+					five_prime, three_prime = start, end - 1
+					reads = pos_reads
+				else:
+					five_prime, three_prime = end - 1, start
+					reads = neg_reads
+
+				reads[chrom][three_prime if use_three_prime else five_prime] += 1
+				if fragments:
+					reads[chrom][five_prime if use_three_prime else three_prime] += 1
 
 		bam.close()
 	
