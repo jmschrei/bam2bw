@@ -154,14 +154,14 @@ across Python 3.10 through 3.13.
 v0.5.0
 ======
 
+  New
   - Added -3p/--three_prime to record the 3' end of each read or interval instead of the 5' end.
   - Added -mp/--mate_pairs, --rna5, and --opposite_strand to jointly count paired-end
     reads as a single RNA/fragment tag (e.g. for PRO-seq/PRO-cap) instead of counting
     each mate independently.
-v0.4.3
-======
 
-  - Packaging moved from setup.py to pyproject.toml. `pip install bam2bw` and `pip install -e .[test]` are unchanged.
+  Fixes
+  - .sam input is now actually read. It was listed as an accepted format but no branch handled it, so a SAM file exited 0 after writing bigWigs with no entries, and a nonexistent .sam path did the same.
   - Entries falling outside the chromosome sizes given to -s are now discarded explicitly, with a count reported, instead of being dropped by pyBigWig without notice.
   - -r now normalizes over the entries actually written rather than over every counted read, so a sizes file that disagrees with the input no longer yields a track summing to less than the scale factor.
   - -r with -v reports the read depth that was divided through.
@@ -169,6 +169,11 @@ v0.4.3
   - Blank lines and # comments in a chrom_sizes file are skipped instead of raising.
   - Malformed BED/tsv lines and mapped reads with no CIGAR now report the file and the offending line or read rather than raising a bare unpacking error.
   - A gzip-compressed FASTA passed to -s now says that BGZF is required and names the file. Only BGZF has ever worked; the v0.4.2 note about .gz variants refers to BGZF.
+
+  Packaging
+  - Packaging moved from setup.py to pyproject.toml. `pip install bam2bw` and `pip install -e .[test]` are unchanged.
+  - Added an end-to-end test suite, run on GitHub Actions against Python 3.10 through 3.13 on every push and pull request.
+  - v0.4.2 and v0.4.3 were version-logged but never published to PyPI, so this release supersedes both. The last release on PyPI was v0.4.1.
 
 v0.4.2
 ======
