@@ -126,7 +126,7 @@ uv run pytest
 ```
 
 The same suite runs on GitHub Actions on every push and pull request to `main`,
-across Python 3.10 through 3.13 on Linux and macOS.
+across Python 3.10 through 3.13.
 
 ### Version Log
 
