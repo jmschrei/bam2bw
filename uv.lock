@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "bam2bw"
-version = "0.4.2"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "biopython" },
