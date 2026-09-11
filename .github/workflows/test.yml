@@ -1,0 +1,36 @@
+# Runs the end-to-end test suite against every supported Python version. The
+# suite invokes the `bam2bw` script in a subprocess, so the environment uv
+# builds here is the one the script itself runs in.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install the package and test dependencies
+        run: uv sync --extra test --locked
+
+      - name: Run the test suite
+        run: uv run pytest -v

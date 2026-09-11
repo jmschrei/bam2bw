@@ -1,6 +1,7 @@
 ## bam2bw
 
 [![Downloads](https://static.pepy.tech/badge/bam2bw)](https://pepy.tech/project/bam2bw)
+[![Tests](https://github.com/jmschrei/bam2bw/actions/workflows/test.yml/badge.svg)](https://github.com/jmschrei/bam2bw/actions/workflows/test.yml)
 
 A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files of fragments, into either stranded or unstraded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. As a convenience, the starts and ends can be shifted (e.g., to account for Tn5 bias), a scaling factor can be used to multiply the mapped counts at each basepair, and read depth normalization can be applied to make the sum across the bigWigs be equal to 1. When a scaling factor and read depth normalization are used together, the sum across the two bigWigs is equal to the scaling factor.
 
@@ -123,6 +124,9 @@ or, with `uv`,
 uv sync --extra test
 uv run pytest
 ```
+
+The same suite runs on GitHub Actions on every push and pull request to `main`,
+across Python 3.10 through 3.13 on Linux and macOS.
 
 ### Version Log
 
