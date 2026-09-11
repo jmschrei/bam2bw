@@ -195,8 +195,12 @@ def extract_reads(args, chrom_sizes, idx):
 	# Extract the file being considered	
 	filename = args.filename[idx]
 	name = filename.split("/")[-1]
-	if filename.endswith(".bam"):
-		bam = pysam.AlignmentFile(filename, "rb")
+	if filename.endswith((".bam", ".sam")):
+		# pysam has to be told which of the two it is -- "rb" is binary BAM
+		# and "r" is text SAM. Neither needs an index because the loop below
+		# fetches until_eof.
+		mode = "rb" if filename.endswith(".bam") else "r"
+		bam = pysam.AlignmentFile(filename, mode)
 		pending_mates = {}
 
 		# These are read once per read in the loop below, which is hot enough

@@ -1444,16 +1444,6 @@ def test_opposite_strand_duplicates_flipping_rna5_and_three_prime(stranded,
 	assert len(set(map(str, tracks.values()))) == 4
 
 
-## Known bugs
-#
-# These describe how the tool should behave. They are skipped rather than
-# asserting the current output, so that fixing the bug turns them green
-# instead of requiring the test to be rewritten.
-
-
-@pytest.mark.skip(reason="BUG: .sam passes the extension check but no branch "
-	"in extract_reads handles it, so SAM input silently produces empty "
-	"bigWigs instead of being read")
 def test_sam_input_is_processed(stranded, sizes, tmp_path, bam):
 	path = tmp_path / "test.sam"
 	with pysam.AlignmentFile(str(bam), "rb") as infile:
@@ -1468,8 +1458,6 @@ def test_sam_input_is_processed(stranded, sizes, tmp_path, bam):
 	assert_array_almost_equal(counts, [2, 1], 4)
 
 
-@pytest.mark.skip(reason="BUG: a .sam path is never opened, so a nonexistent "
-	"one exits 0 and writes empty bigWigs instead of erroring")
 def test_missing_sam_file_errors(run, sizes, tmp_path):
 	process = run(tmp_path / "does_not_exist.sam", "-s", sizes)
 
@@ -1568,6 +1556,13 @@ def test_discarded_entries_are_excluded_from_read_depth_unstranded(run,
 
 	assert process.returncode == 0
 	assert_array_almost_equal(total(read_bigwig(tmp_path / "out.bw")), 1.0, 4)
+
+
+## Known bugs
+#
+# These describe how the tool should behave. They are skipped rather than
+# asserting the current output, so that fixing the bug turns them green
+# instead of requiring the test to be rewritten.
 
 
 @pytest.mark.skip(reason="BUG: -mp on a single-end BAM drops every read, since "
