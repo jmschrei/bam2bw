@@ -292,6 +292,35 @@ if len(reads) > 1:
 
 ###
 
+# A bigWig can only hold positions that fall inside the chromosome it declares,
+# and pyBigWig discards anything else without raising or returning an error.
+# That silently removes reads from the output -- either because the sizes file
+# disagrees with the BAM header, or because a shift pushed an end off the edge
+# of a chromosome -- and, worse, read depth would be summed over reads that
+# never reach the file, leaving the track normalized to less than it claims.
+# Discarding them here instead means it can be counted, reported, and excluded
+# from the read depth below.
+
+discarded = collections.defaultdict(int)
+
+for chrom, size in chrom_sizes:
+	strands = [pos_reads[chrom]]
+	if not args.unstranded:
+		strands.append(neg_reads[chrom])
+
+	for counts in strands:
+		idxs = numpy.fromiter(counts.keys(), dtype='int64', count=len(counts))
+
+		for idx in idxs[(idxs < 0) | (idxs >= size)]:
+			discarded[chrom] += counts.pop(idx)
+
+if len(discarded) > 0:
+	print("{} entries fell outside the provided chromosome sizes and were discarded ({}).".format(
+		sum(discarded.values()), ", ".join("{}: {}".format(chrom, count)
+			for chrom, count in discarded.items())))
+
+###
+
 # Now that we have our dictionary(ies) of reads, we need to create bigWig
 # objects and store them. Because the entries need to be sorted along the
 # length of each chromosome we have to convert the dictionaries to numpy arrays
@@ -324,6 +353,9 @@ if args.read_depth:
 	read_depth = sum([sum(pos_reads[chrom].values()) for chrom, _ in chrom_sizes])
 	if not args.unstranded:
 		read_depth += sum([sum(neg_reads[chrom].values()) for chrom, _ in chrom_sizes])
+
+	if args.verbose:
+		print("Dividing through by a read depth of {}.".format(read_depth))
 
 
 for chrom, _ in chrom_sizes:
