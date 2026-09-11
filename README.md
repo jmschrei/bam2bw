@@ -7,7 +7,7 @@ A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files 
 `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps. v0.4.0 allows parallel processing of files, even if they are remote, reducing the time needed to process inputs to just the time needed to process the biggest one.
 
 ```
-usage: bam2bw [-h] -s SIZES [-u] [-f | -3] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-mp] [--rna5 {read1,read2}] [--opposite_strand] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
+usage: bam2bw [-h] -s SIZES [-u] [-f | -3p] [-ps POS_SHIFT] [-ns NEG_SHIFT] [-mp] [--rna5 {read1,read2}] [--opposite_strand] [-sf SCALE_FACTOR] [-r] [-p PARALLEL] -n NAME [-z ZOOMS] [-v] filename [filename ...]
 
 This tool will convert BAM files to bigwig files without an intermediate.
 
@@ -17,10 +17,12 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -s SIZES, --sizes SIZES
-                        A chrom_sizes or FASTA file.
+                        A chrom_sizes, .fai, or FASTA file. Only the first two
+                        columns of a chrom_sizes/.fai file are read. A
+                        compressed FASTA must be BGZF, not gzip.
   -u, --unstranded      Have only one, unstranded, output.
   -f, --fragments       The data is fragments and so both ends should be recorded.
-  -3, --three_prime     Record the 3' end of each read instead of the 5' end.
+  -3p, --three_prime    Record the 3' end of each read instead of the 5' end.
   -ps POS_SHIFT, --pos_shift POS_SHIFT
                         A shift to apply to positive strand reads.
   -ns NEG_SHIFT, --neg_shift NEG_SHIFT
@@ -100,11 +102,11 @@ Each will return two bigWig files: `test-run.+.bw` and `test-run.-.bw`. When mul
 
 (10) When wanting to record 3' ends instead of 5' ends:
 
-`bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -3`
+`bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -3p`
 
-(11) When a BAM has paired-end reads that jointly represent a single RNA/fragment tag (e.g. PRO-seq/PRO-cap), rather than two independent events (e.g. the two Tn5 cut sites of an ATAC-seq fragment): use `--mate_pairs` so each pair contributes exactly one position instead of one from each mate. `--rna5` picks which mate carries the RNA's 5' end (the other mate's own 5' end is used as the RNA's 3' end), and `-3`/`--opposite_strand` behave as before but are applied to the jointly-determined position/strand:
+(11) When a BAM has paired-end reads that jointly represent a single RNA/fragment tag (e.g. PRO-seq/PRO-cap), rather than two independent events (e.g. the two Tn5 cut sites of an ATAC-seq fragment): use `--mate_pairs` so each pair contributes exactly one position instead of one from each mate. `--rna5` picks which mate carries the RNA's 5' end (the other mate's own 5' end is used as the RNA's 3' end), and `-3p`/`--opposite_strand` behave as before but are applied to the jointly-determined position/strand:
 
-`bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -mp --rna5 read2 -3`
+`bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -mp --rna5 read2 -3p`
 
 #### A note on paired-end BAMs
 
@@ -141,6 +143,7 @@ pytest
 v0.5.0
 ======
 
+  - Added -3p/--three_prime to record the 3' end of each read or interval instead of the 5' end.
   - Added -mp/--mate_pairs, --rna5, and --opposite_strand to jointly count paired-end
     reads as a single RNA/fragment tag (e.g. for PRO-seq/PRO-cap) instead of counting
     each mate independently.
