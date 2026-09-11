@@ -107,6 +107,16 @@ bedGraphToBigWig my.+.bedGraph hg38.chrom.sizes my.+.bw
 bedGraphToBigWig my.-.bedGraph hg38.chrom.sizes my.-.bw
 ```
 
+### Testing
+
+The test suite runs `bam2bw` end-to-end on small synthetic BAM, BED, and tsv
+files built on the fly, and checks the values inside the bigWigs it writes.
+
+```
+pip install -e .[test]
+pytest
+```
+
 ### Version Log
 
 ```

@@ -1,0 +1,13 @@
+CLAUDE.md
+claude_comments/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+*.egg-info/
+build/
+dist/
+
+# pyfaidx writes these next to any FASTA it opens
+*.fai
