@@ -11,3 +11,6 @@ dist/
 
 # pyfaidx writes these next to any FASTA it opens
 *.fai
+
+.venv/
+.ruff_cache/

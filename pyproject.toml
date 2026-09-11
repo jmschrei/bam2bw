@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bam2bw"
+version = "0.4.2"
+description = "A command-line tool for converting SAM/BAM/fragment.tsv files into un/stranded bp resolution BigWig files."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Jacob Schreiber", email = "jmschreiber91@gmail.com" }]
+keywords = [
+    "genomics",
+    "bioinformatics",
+    "bigwig",
+    "bam",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    "biopython",
+    "joblib",
+    "numpy",
+    "pysam",
+    "pyfaidx",
+    "pyBigWig",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage   = "https://github.com/jmschrei/bam2bw"
+Repository = "https://github.com/jmschrei/bam2bw"
+Issues     = "https://github.com/jmschrei/bam2bw/issues"
+
+# `bam2bw` is a standalone script rather than an importable package, so it is
+# installed as a script file instead of through a console-script entry point.
+# The tests invoke it by path, which is why it stays at the root of the repo.
+[tool.setuptools]
+py-modules = []
+script-files = ["bam2bw"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
