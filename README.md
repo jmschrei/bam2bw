@@ -117,12 +117,20 @@ pip install -e .[test]
 pytest
 ```
 
+or, with `uv`,
+
+```
+uv sync --extra test
+uv run pytest
+```
+
 ### Version Log
 
 ```
 v0.4.3
 ======
 
+  - Packaging moved from setup.py to pyproject.toml. `pip install bam2bw` and `pip install -e .[test]` are unchanged.
   - Entries falling outside the chromosome sizes given to -s are now discarded explicitly, with a count reported, instead of being dropped by pyBigWig without notice.
   - -r now normalizes over the entries actually written rather than over every counted read, so a sizes file that disagrees with the input no longer yields a track summing to less than the scale factor.
   - -r with -v reports the read depth that was divided through.
