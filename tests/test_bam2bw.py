@@ -1080,23 +1080,42 @@ def test_verbose_with_parallel_files(run, bam, sizes, tmp_path):
 # misreading of the file.
 
 
-def test_fai_file_is_rejected(run, bam, fastas, tmp_path):
+def test_fai_file_is_accepted(stranded, bam, sizes, fastas, tmp_path):
 	"""A samtools .fai index starts with the two chrom_sizes columns and then
-	carries three more, so it is the malformed sizes file most likely to be
-	passed by accident."""
+	carries three more, and is the file most likely to be reached for when a
+	chrom_sizes is not already lying around."""
 
 	pysam.faidx(str(fastas[".fa"]))
 
-	process = run(bam, "-s", str(fastas[".fa"]) + ".fai")
+	expected, _ = stranded(bam, "-s", sizes, name="sizes")
+	actual, _ = stranded(bam, "-s", str(fastas[".fa"]) + ".fai", name="fai")
 
-	assert process.returncode != 0
+	assert actual == expected
 
 
 @pytest.mark.parametrize("label,content", [
-	("extra column", "chr1\t1000\tfoo\n"),
-	("blank line", "chr1\t1000\n\n"),
-	("comment line", "#genome hg38\nchr1\t1000\n"),
-	("one column", "chr1\n")
+	("extra columns", "chr1\t1000\tfoo\tbar\nchr2\t500\tx\ty\nchr3\t200\ta\tb\n"),
+	("blank lines", "chr1\t1000\n\nchr2\t500\n\nchr3\t200\n\n"),
+	("comment header", "#genome hg38\nchr1\t1000\nchr2\t500\nchr3\t200\n"),
+	("leading whitespace", "  chr1\t1000\nchr2\t500\nchr3\t200\n")
+])
+def test_tolerated_chrom_sizes_variants(stranded, bam, sizes, tmp_path, label,
+	content):
+	"""Only the first two fields are read, and blank and # lines are skipped,
+	so these all describe the same three chromosomes."""
+
+	path = tmp_path / "variant.chrom.sizes"
+	path.write_text(content)
+
+	expected, _ = stranded(bam, "-s", sizes, name="plain")
+	actual, _ = stranded(bam, "-s", path, name="variant")
+
+	assert actual == expected
+
+
+@pytest.mark.parametrize("label,content", [
+	("one column", "chr1\n"),
+	("non-numeric length", "chr1\tlong\n")
 ])
 def test_malformed_chrom_sizes_is_rejected(run, bam, tmp_path, label, content):
 	path = tmp_path / "bad.chrom.sizes"
@@ -1105,6 +1124,7 @@ def test_malformed_chrom_sizes_is_rejected(run, bam, tmp_path, label, content):
 	process = run(bam, "-s", path)
 
 	assert process.returncode != 0
+	assert "bad.chrom.sizes, line 1" in process.stderr
 
 
 def test_duplicate_chromosome_in_sizes_is_rejected(run, bam, tmp_path):
@@ -1128,6 +1148,11 @@ def test_plain_gzipped_fasta_is_rejected(run, bam, fastas, tmp_path):
 	process = run(bam, "-s", path)
 
 	assert process.returncode != 0
+	assert "BGZF" in process.stderr
+
+	# pyfaidx already explains BGZF on its own. Naming the file is what bam2bw
+	# adds, and is what matters when -s was filled in by a script.
+	assert "plain.fa.gz" in process.stderr
 
 
 @pytest.mark.parametrize("label,content", [
@@ -1143,6 +1168,7 @@ def test_malformed_bed_is_rejected(run, sizes, tmp_path, label, content):
 	process = run(path, "-s", sizes)
 
 	assert process.returncode != 0
+	assert "bad.bed, line" in process.stderr
 
 
 def test_mapped_read_without_a_cigar_is_rejected(run, sizes, tmp_path):
@@ -1155,6 +1181,8 @@ def test_mapped_read_without_a_cigar_is_rejected(run, sizes, tmp_path):
 	process = run(path, "-s", sizes)
 
 	assert process.returncode != 0
+	assert "no_cigar.bam" in process.stderr
+	assert "CIGAR" in process.stderr
 
 
 def test_missing_output_directory_is_rejected(run, bam, sizes, tmp_path):
