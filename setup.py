@@ -18,4 +18,7 @@ setup(
         "pyBigWig",
         "tqdm",
     ],
+    extras_require={
+        "test": ["pytest"],
+    },
 )
