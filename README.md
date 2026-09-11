@@ -120,6 +120,13 @@ pytest
 ### Version Log
 
 ```
+v0.4.3
+======
+
+  - Entries falling outside the chromosome sizes given to -s are now discarded explicitly, with a count reported, instead of being dropped by pyBigWig without notice.
+  - -r now normalizes over the entries actually written rather than over every counted read, so a sizes file that disagrees with the input no longer yields a track summing to less than the scale factor.
+  - -r with -v reports the read depth that was divided through.
+
 v0.4.2
 ======
 

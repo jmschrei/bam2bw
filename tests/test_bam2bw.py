@@ -915,16 +915,20 @@ def test_read_ending_on_the_last_base(stranded, sizes, tmp_path):
 	assert_array_almost_equal(counts, [1, 1], 4)
 
 
-def test_negative_position_from_a_shift_is_an_error(run, sizes, tmp_path):
+def test_negative_position_from_a_shift_is_reported(run, sizes, tmp_path):
 	"""A shift large enough to push a read off the front of the chromosome
-	cannot be written, and must fail rather than write a corrupt file."""
+	cannot be written, so it is discarded and said out loud rather than
+	vanishing."""
 
 	path = write_bam(tmp_path / "near_zero.bam", CHROM_SIZES,
 		[("chr1", 10, 20, False)])
 
 	process = run(path, "-s", sizes, "--pos_shift=-100")
 
-	assert process.returncode != 0
+	assert process.returncode == 0
+	assert "discarded" in process.stdout
+	assert "chr1" in process.stdout
+	assert total(read_bigwig(tmp_path / "out.+.bw")) == 0
 
 
 ## Degenerate inputs
@@ -1195,9 +1199,6 @@ def test_missing_sam_file_errors(run, sizes, tmp_path):
 	assert process.returncode != 0
 
 
-@pytest.mark.skip(reason="BUG: a position past the end of the chromosome named "
-	"in the sizes file is dropped by pyBigWig, which reports nothing, so "
-	"bam2bw exits 0 having silently discarded reads")
 def test_out_of_range_positions_are_reported(run, tmp_path):
 	"""A chrom_sizes file shorter than the BAM header -- the wrong assembly,
 	or a truncated file -- makes reads near the end of a chromosome vanish."""
@@ -1214,9 +1215,6 @@ def test_out_of_range_positions_are_reported(run, tmp_path):
 	assert reported
 
 
-@pytest.mark.skip(reason="BUG: read depth is summed over every counted read, "
-	"including ones whose positions are then dropped for being out of range, "
-	"so -r produces a track summing to less than the requested total")
 def test_read_depth_covers_only_what_is_written(run, tmp_path):
 	path = write_bam(tmp_path / "far.bam", [("chr1", 3000)],
 		[("chr1", 100, 50, False), ("chr1", 2000, 50, False)])
@@ -1229,3 +1227,67 @@ def test_read_depth_covers_only_what_is_written(run, tmp_path):
 		+ total(read_bigwig(tmp_path / "out.-.bw")))
 
 	assert_array_almost_equal(written, 1.0, 4)
+
+
+def test_in_range_reads_survive_alongside_discarded_ones(run, tmp_path):
+	"""Only the offending entries go; the rest of the chromosome is written."""
+
+	path = write_bam(tmp_path / "mixed.bam", [("chr1", 3000)],
+		[("chr1", 100, 50, False), ("chr1", 200, 50, False),
+		 ("chr1", 2000, 50, False)])
+	short = write_chrom_sizes(tmp_path / "short.chrom.sizes", [("chr1", 1000)])
+
+	process = run(path, "-s", short)
+
+	assert process.returncode == 0
+
+	pos = read_bigwig(tmp_path / "out.+.bw")
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100, 200])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+def test_discard_message_counts_the_entries(run, tmp_path):
+	path = write_bam(tmp_path / "far.bam", [("chr1", 3000)],
+		[("chr1", 2000, 50, False), ("chr1", 2100, 50, False),
+		 ("chr1", 2200, 50, True)])
+	short = write_chrom_sizes(tmp_path / "short.chrom.sizes", [("chr1", 1000)])
+
+	process = run(path, "-s", short)
+
+	assert process.returncode == 0
+	assert "3 entries" in process.stdout
+	assert "chr1: 3" in process.stdout
+
+
+def test_nothing_is_reported_when_everything_fits(run, bam, sizes):
+	process = run(bam, "-s", sizes)
+
+	assert process.returncode == 0
+	assert "discarded" not in process.stdout
+
+
+def test_read_depth_is_reported_under_verbose(run, bam, sizes):
+	process = run(bam, "-s", sizes, "-r", "-v")
+
+	assert process.returncode == 0
+	assert "read depth of 8" in process.stdout
+
+
+def test_read_depth_is_not_reported_without_verbose(run, bam, sizes):
+	process = run(bam, "-s", sizes, "-r")
+
+	assert process.returncode == 0
+	assert "read depth" not in process.stdout
+
+
+def test_discarded_entries_are_excluded_from_read_depth_unstranded(run,
+	tmp_path):
+	path = write_bam(tmp_path / "far.bam", [("chr1", 3000)],
+		[("chr1", 100, 50, False), ("chr1", 2000, 50, True)])
+	short = write_chrom_sizes(tmp_path / "short.chrom.sizes", [("chr1", 1000)])
+
+	process = run(path, "-s", short, "-r", "-u")
+
+	assert process.returncode == 0
+	assert_array_almost_equal(total(read_bigwig(tmp_path / "out.bw")), 1.0, 4)
