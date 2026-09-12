@@ -1161,9 +1161,29 @@ def test_plain_gzipped_fasta_is_rejected(run, bam, fastas, tmp_path):
 
 
 @pytest.mark.parametrize("label,content", [
+	("comment header", "# id=sample\n# description=\nchr1\t100\t150\nchr1\t200\t230\n"),
+	("comment between entries", "chr1\t100\t150\n# a note\nchr1\t200\t230\n"),
+	("blank lines", "chr1\t100\t150\n\nchr1\t200\t230\n\n"),
+	("trailing blank line", "chr1\t100\t150\nchr1\t200\t230\n\n")
+])
+def test_tolerated_bed_variants(stranded, sizes, tmp_path, label, content):
+	"""Blank and # lines are skipped, so these all describe the same two
+	intervals. A 10x CellRanger fragments file always opens with a # header,
+	and is the reason this matters."""
+
+	path = tmp_path / "variant.bed"
+	path.write_text(content)
+
+	pos, _ = stranded(path, "-s", sizes)
+
+	positions, counts = entries(pos, "chr1")
+	assert_array_almost_equal(positions, [100, 200])
+	assert_array_almost_equal(counts, [1, 1], 4)
+
+
+@pytest.mark.parametrize("label,content", [
 	("two columns", "chr1\t100\n"),
 	("track header", 'track name="peaks"\nchr1\t100\t150\n'),
-	("trailing blank line", "chr1\t100\t150\n\n"),
 	("non-numeric coordinates", "chr1\tstart\tend\n")
 ])
 def test_malformed_bed_is_rejected(run, sizes, tmp_path, label, content):

@@ -306,6 +306,17 @@ def extract_reads(args, chrom_sizes, idx):
 		for i, line in enumerate(tqdm(f, disable=not args.verbose, position=idx,
 			desc=name)):
 			fields = line.split()
+
+			# Blank lines and # comments are skipped, matching the chrom_sizes
+			# reader above. A 10x CellRanger fragments file opens with a #
+			# header, so rejecting it would fail on the most common input.
+			# Testing fields[0] rather than the raw line costs no allocation on
+			# this per-read path and still catches a # behind leading
+			# whitespace; split() never yields an empty field, so [0][0] is safe.
+
+			if len(fields) == 0 or fields[0][0] == '#':
+				continue
+
 			if len(fields) < 3:
 				raise ValueError(("{}, line {}: expected at least three columns "
 					"holding a chromosome, a start and an end, got {}.").format(
