@@ -151,6 +151,12 @@ across Python 3.10 through 3.13.
 ### Version Log
 
 ```
+Unreleased
+==========
+
+  Fixes
+  - Blank lines and # comments in a BED/tsv input file are skipped instead of raising. Only the chrom_sizes reader skipped them; a 10x CellRanger fragments file opens with a # header, so every one of them failed with "expected at least three columns" after peak callers and other tools had read the same file without complaint.
+
 v0.5.0
 ======
 
