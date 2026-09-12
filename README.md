@@ -151,11 +151,14 @@ across Python 3.10 through 3.13.
 ### Version Log
 
 ```
-Unreleased
-==========
+v0.5.1
+======
 
   Fixes
-  - Blank lines and # comments in a BED/tsv input file are skipped instead of raising. Only the chrom_sizes reader skipped them; a 10x CellRanger fragments file opens with a # header, so every one of them failed with "expected at least three columns" after peak callers and other tools had read the same file without complaint.
+  - Blank lines and # comments in a BED/tsv input file are skipped instead of raising. Only the chrom_sizes reader skipped them, so a 10x CellRanger fragments file -- which opens with # id=, # description= and # pipeline_version= -- failed with "expected at least three columns" after peak callers and other tools had read the same file without complaint. A comment carrying three or more whitespace-separated fields was worse than the error: "# a note" has three, so it was read as an interval on a chromosome named "#" and silently discarded rather than reported.
+
+  Packaging
+  - v0.5.0 was tagged and released on GitHub but never published to PyPI. The last release on PyPI was v0.4.1, so this release supersedes v0.4.2, v0.4.3 and v0.5.0 there.
 
 v0.5.0
 ======
