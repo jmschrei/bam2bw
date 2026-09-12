@@ -1,3 +1,6 @@
 graft tests
 
-global-exclude __pycache__ *.py[cod]
+# `prune <dir>`, not `global-exclude __pycache__`. The latter matches files
+# named __pycache__, which never exist, so it silently shipped everything
+# inside the directory. Add a line here if tests/ ever gains a subpackage.
+prune tests/__pycache__

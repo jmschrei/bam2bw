@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,8 @@ name = "bam2bw"
 version = "0.5.1"
 description = "A command-line tool for converting SAM/BAM/fragment.tsv files into un/stranded bp resolution BigWig files."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Jacob Schreiber", email = "jmschreiber91@gmail.com" }]
 keywords = [
