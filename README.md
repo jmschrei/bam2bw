@@ -151,13 +151,6 @@ across Python 3.10 through 3.13.
 ### Version Log
 
 ```
-Unreleased
-==========
-
-  Packaging
-  - `project.license` is now the SPDX string "MIT" with `license-files`, rather than a TOML table. setuptools deprecated the table form, which warned on every build and stops being supported on 2027-Feb-18. The build requirement rises from setuptools>=64 to >=77, the first version to accept the new fields.
-  - MANIFEST.in prunes tests/__pycache__ instead of listing __pycache__ in a global-exclude. global-exclude matches files, and __pycache__ is a directory, so the directive never matched and any non-.pyc file inside a __pycache__ directory was shipped in the sdist.
-
 v0.5.1
 ======
 
@@ -166,6 +159,8 @@ v0.5.1
 
   Packaging
   - v0.5.0 was tagged and released on GitHub but never published to PyPI. The last release on PyPI was v0.4.1, so this release supersedes v0.4.2, v0.4.3 and v0.5.0 there.
+  - `project.license` is now the SPDX string "MIT" with `license-files`, rather than a TOML table. setuptools deprecated the table form, which warned on every build and stops being supported on 2027-Feb-18. The build requirement rises from setuptools>=64 to >=77, the first version to accept the new fields.
+  - MANIFEST.in prunes tests/__pycache__ instead of listing __pycache__ in a global-exclude. global-exclude matches files, and __pycache__ is a directory, so the directive never matched and any non-.pyc file inside a __pycache__ directory was shipped in the sdist.
 
 v0.5.0
 ======
