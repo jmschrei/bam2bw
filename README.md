@@ -3,6 +3,17 @@
 [![Downloads](https://static.pepy.tech/badge/bam2bw)](https://pepy.tech/project/bam2bw)
 [![Tests](https://github.com/jmschrei/bam2bw/actions/workflows/test.yml/badge.svg)](https://github.com/jmschrei/bam2bw/actions/workflows/test.yml)
 
+> **bam2bw has moved into [figwig](https://github.com/jmschrei/figwig) as `figwig bam2bw`.** It takes the same command-line arguments as bam2bw 0.5.1 and writes bigWigs with the same names and entries, but reads local BAM and BED/tsv files faster: at `-p 2`, it converted a 2.4 GB ATAC-seq BAM in 4.65 s against bam2bw's 58.48 s, and 18.9 million scATAC-seq fragments in 1.73 s against 28.45 s ([benchmarks](https://figwig.readthedocs.io/en/latest/benchmarks.html)). To switch, install figwig with its `bam2bw` extra and put `figwig` in front of the command:
+>
+> ```bash
+> pip install "figwig[bam2bw]"
+>
+> bam2bw my.bam -s hg38.chrom.sizes -n test-run -v                # before
+> figwig bam2bw my.bam -s hg38.chrom.sizes -n test-run -v -p 8    # after: test-run.+.bw, test-run.-.bw
+> ```
+>
+> The one argument whose meaning differs is `-p`. In bam2bw it is a number of jobs, at most one per input file; in figwig it is a number of cores, so a single local BAM is read on several of them, and `-1` uses every CPU. Both default to 1. The [figwig bam2bw documentation](https://figwig.readthedocs.io/en/latest/bam2bw.html) describes which files are read on several cores.
+
 A command-line tool for converting SAM/BAM files of reads, or .tsv/tsv.gz files of fragments, into either stranded or unstraded basepair resolution bigWig files. By default, only the 5' end of reads are mapped (not the full span of the read) and these bigWig file(s) contain the integer count of reads mapping to each basepair. Optionally, both the 3' and 5' of the entry can be mapped if they correspond to fragments, such as from ATAC-seq experiments. As a convenience, the starts and ends can be shifted (e.g., to account for Tn5 bias), a scaling factor can be used to multiply the mapped counts at each basepair, and read depth normalization can be applied to make the sum across the bigWigs be equal to 1. When a scaling factor and read depth normalization are used together, the sum across the two bigWigs is equal to the scaling factor.
 
 `bam2bw` does not produce any intermediary files and can even stream SAM/BAM files remotely (but not .tsv/.tsv.gz). This means that you can go directly from finding a SAM/BAM file somewhere on the internet to the bigWig files used to train ML programs without several time-consuming steps. v0.4.0 allows parallel processing of files, even if they are remote, reducing the time needed to process inputs to just the time needed to process the biggest one.
